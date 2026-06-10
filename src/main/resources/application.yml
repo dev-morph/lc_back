@@ -1,0 +1,77 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  application:
+    name: oao-back
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 32MB
+  datasource:
+    url: ${DB_URL:jdbc:mariadb://localhost:3306/oao}
+    username: ${DB_USERNAME:oao}
+    password: ${DB_PASSWORD:oao}
+    driver-class-name: org.mariadb.jdbc.Driver
+  docker:
+    compose:
+      enabled: ${SPRING_DOCKER_COMPOSE_ENABLED:false}
+  flyway:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: ${KAKAO_CLIENT_ID:local-kakao-client-id}
+            client-secret: ${KAKAO_CLIENT_SECRET:local-kakao-client-secret}
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/kakao"
+            client-authentication-method: client_secret_post
+            scope:
+              - profile_nickname
+              - account_email
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
+oao:
+  auth:
+    oauth-success-redirect-url: ${OAUTH_SUCCESS_REDIRECT_URL:http://localhost:3000/oauth/success}
+  dev-tools:
+    enabled: ${OAO_DEV_TOOLS_ENABLED:false}
+    secret: ${OAO_DEV_TOOLS_SECRET:}
+  matching:
+    auto-match-interval-hours: 48
+    proposal-valid-days: 3
+    s-grade-guaranteed-auto-match-count: 2
+  instant-introduction:
+    usage-window-hours: 24
+  upload:
+    root-dir: ${UPLOAD_ROOT_DIR:uploads}
+    public-path: ${UPLOAD_PUBLIC_PATH:/uploads}
+  verification:
+    message:
+      provider: ${VERIFICATION_MESSAGE_PROVIDER:mock}
+      dev-code-response-enabled: ${VERIFICATION_DEV_CODE_RESPONSE_ENABLED:true}
+      alimtalk:
+        api-key: ${ALIMTALK_API_KEY:}
+        api-secret: ${ALIMTALK_API_SECRET:}
+        sender-key: ${ALIMTALK_SENDER_KEY:}
+        template-code: ${ALIMTALK_PHONE_VERIFICATION_TEMPLATE_CODE:LC_PHONE_VERIFICATION}
+      solapi:
+        api-key: ${SOLAPI_API_KEY:${ALIMTALK_API_KEY:}}
+        api-secret: ${SOLAPI_API_SECRET:${ALIMTALK_API_SECRET:}}
+        from-number: ${SOLAPI_FROM_NUMBER:}

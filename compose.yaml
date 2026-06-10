@@ -1,0 +1,10 @@
+services:
+  mariadb:
+    image: 'mariadb:11'
+    environment:
+      - 'MARIADB_DATABASE=oao'
+      - 'MARIADB_PASSWORD=oao'
+      - 'MARIADB_ROOT_PASSWORD=oao-root'
+      - 'MARIADB_USER=oao'
+    ports:
+      - '3306:3306'
