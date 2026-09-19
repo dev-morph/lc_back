@@ -29,240 +29,256 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ChatService {
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.oao.backend.user.service.ModerationService moderation;
 
-	private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
-	private static final int MAX_MESSAGE_LENGTH = 1_000;
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.oao.backend.auth.RequestRateLimiter rate;
 
-	private final ChatRoomRepository chatRoomRepository;
-	private final ChatRoomMemberStateRepository chatRoomMemberStateRepository;
-	private final ChatMessageRepository chatMessageRepository;
-	private final MatchProposalRepository matchProposalRepository;
-	private final UserAccountRepository userAccountRepository;
-	private final UserProfileRepository userProfileRepository;
-	private final ProfilePhotoRepository profilePhotoRepository;
-	private final AppNotificationService notificationService;
+  private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
+  private static final int MAX_MESSAGE_LENGTH = 1_000;
 
-	public ChatService(
-		ChatRoomRepository chatRoomRepository,
-		ChatRoomMemberStateRepository chatRoomMemberStateRepository,
-		ChatMessageRepository chatMessageRepository,
-		MatchProposalRepository matchProposalRepository,
-		UserAccountRepository userAccountRepository,
-		UserProfileRepository userProfileRepository,
-		ProfilePhotoRepository profilePhotoRepository,
-		AppNotificationService notificationService
-	) {
-		this.chatRoomRepository = chatRoomRepository;
-		this.chatRoomMemberStateRepository = chatRoomMemberStateRepository;
-		this.chatMessageRepository = chatMessageRepository;
-		this.matchProposalRepository = matchProposalRepository;
-		this.userAccountRepository = userAccountRepository;
-		this.userProfileRepository = userProfileRepository;
-		this.profilePhotoRepository = profilePhotoRepository;
-		this.notificationService = notificationService;
-	}
+  private final ChatRoomRepository chatRoomRepository;
+  private final ChatRoomMemberStateRepository chatRoomMemberStateRepository;
+  private final ChatMessageRepository chatMessageRepository;
+  private final MatchProposalRepository matchProposalRepository;
+  private final UserAccountRepository userAccountRepository;
+  private final UserProfileRepository userProfileRepository;
+  private final ProfilePhotoRepository profilePhotoRepository;
+  private final AppNotificationService notificationService;
 
-	@Transactional(readOnly = true)
-	public List<ChatRoomSummaryView> rooms(Long userId) {
-		return chatRoomRepository.findActiveRoomsByParticipant(userId, ChatRoomStatus.ACTIVE).stream()
-			.filter(room -> !hasLeftRoom(room, userId))
-			.map(room -> toSummaryView(room, userId))
-			.sorted(Comparator.comparing(ChatRoomSummaryView::sortAt).reversed())
-			.toList();
-	}
+  public ChatService(
+      ChatRoomRepository chatRoomRepository,
+      ChatRoomMemberStateRepository chatRoomMemberStateRepository,
+      ChatMessageRepository chatMessageRepository,
+      MatchProposalRepository matchProposalRepository,
+      UserAccountRepository userAccountRepository,
+      UserProfileRepository userProfileRepository,
+      ProfilePhotoRepository profilePhotoRepository,
+      AppNotificationService notificationService) {
+    this.chatRoomRepository = chatRoomRepository;
+    this.chatRoomMemberStateRepository = chatRoomMemberStateRepository;
+    this.chatMessageRepository = chatMessageRepository;
+    this.matchProposalRepository = matchProposalRepository;
+    this.userAccountRepository = userAccountRepository;
+    this.userProfileRepository = userProfileRepository;
+    this.profilePhotoRepository = profilePhotoRepository;
+    this.notificationService = notificationService;
+  }
 
-	@Transactional
-	public ChatRoomDetailView findOrOpenByMatch(Long matchId, Long userId) {
-		MatchProposal match = findAcceptedParticipantMatch(matchId, userId);
-		ChatRoom room = chatRoomRepository.findByMatchId(match.getId())
-			.orElseGet(() -> chatRoomRepository.save(ChatRoom.open(match.getId())));
-		ensureNotLeft(room, userId);
-		return toDetailView(room, match, userId);
-	}
+  @Transactional(readOnly = true)
+  public List<ChatRoomSummaryView> rooms(Long userId) {
+    return chatRoomRepository.findActiveRoomsByParticipant(userId, ChatRoomStatus.ACTIVE).stream()
+        .filter(room -> !hasLeftRoom(room, userId))
+        .map(room -> toSummaryView(room, userId))
+        .sorted(Comparator.comparing(ChatRoomSummaryView::sortAt).reversed())
+        .toList();
+  }
 
-	@Transactional(readOnly = true)
-	public ChatRoomDetailView room(Long roomId, Long userId) {
-		ChatRoom room = findRoom(roomId);
-		MatchProposal match = findAcceptedParticipantMatch(room.getMatchId(), userId);
-		ensureNotLeft(room, userId);
-		return toDetailView(room, match, userId);
-	}
+  @Transactional
+  public ChatRoomDetailView findOrOpenByMatch(Long matchId, Long userId) {
+    MatchProposal match = findAcceptedParticipantMatch(matchId, userId);
+    ChatRoom room =
+        chatRoomRepository
+            .findByMatchId(match.getId())
+            .orElseGet(() -> chatRoomRepository.save(ChatRoom.open(match.getId())));
+    ensureNotLeft(room, userId);
+    return toDetailView(room, match, userId);
+  }
 
-	@Transactional(readOnly = true)
-	public List<ChatMessageView> messages(Long roomId, Long userId) {
-		ChatRoom room = findRoom(roomId);
-		findAcceptedParticipantMatch(room.getMatchId(), userId);
-		ensureNotLeft(room, userId);
-		return chatMessageRepository.findByChatRoomIdAndDeletedAtIsNullOrderByCreatedAtAscIdAsc(roomId).stream()
-			.map(this::toMessageView)
-			.toList();
-	}
+  @Transactional(readOnly = true)
+  public ChatRoomDetailView room(Long roomId, Long userId) {
+    ChatRoom room = findRoom(roomId);
+    MatchProposal match = findAcceptedParticipantMatch(room.getMatchId(), userId);
+    ensureNotLeft(room, userId);
+    return toDetailView(room, match, userId);
+  }
 
-	@Transactional
-	public ChatMessageView sendTextMessage(Long roomId, Long senderUserId, String content) {
-		ChatRoom room = findRoom(roomId);
-		MatchProposal match = findAcceptedParticipantMatch(room.getMatchId(), senderUserId);
-		ensureNotLeft(room, senderUserId);
-		String normalizedContent = normalizeMessageContent(content);
-		ChatMessage message = chatMessageRepository.save(ChatMessage.text(room.getId(), senderUserId, normalizedContent));
-		notificationService.notifyMessageReceived(room.getId(), message.getId(), counterpartUserId(match, senderUserId), senderUserId);
-		return toMessageView(message);
-	}
+  @Transactional(readOnly = true)
+  public List<ChatMessageView> messages(Long roomId, Long userId) {
+    ChatRoom room = findRoom(roomId);
+    findAcceptedParticipantMatch(room.getMatchId(), userId);
+    ensureNotLeft(room, userId);
+    return chatMessageRepository.findByChatRoomIdOrderByCreatedAtAscIdAsc(roomId).stream()
+        .map(this::toMessageView)
+        .toList();
+  }
 
-	@Transactional
-	public void leave(Long roomId, Long userId) {
-		ChatRoom room = findRoom(roomId);
-		findAcceptedParticipantMatch(room.getMatchId(), userId);
-		chatRoomMemberStateRepository.findByChatRoomIdAndUserId(room.getId(), userId)
-			.ifPresentOrElse(
-				ChatRoomMemberState::leave,
-				() -> chatRoomMemberStateRepository.save(ChatRoomMemberState.leave(room.getId(), userId))
-			);
-	}
+  @Transactional
+  public ChatMessageView sendTextMessage(Long roomId, Long senderUserId, String content) {
+    rate.check("chat:" + senderUserId, 30, 60);
+    ChatRoom room = findRoom(roomId);
+    MatchProposal match = findAcceptedParticipantMatch(room.getMatchId(), senderUserId);
+    ensureNotLeft(room, senderUserId);
+    String normalizedContent = normalizeMessageContent(content);
+    ChatMessage message =
+        chatMessageRepository.save(ChatMessage.text(room.getId(), senderUserId, normalizedContent));
+    notificationService.notifyMessageReceived(
+        room.getId(), message.getId(), counterpartUserId(match, senderUserId), senderUserId);
+    return toMessageView(message);
+  }
 
-	private ChatRoom findRoom(Long roomId) {
-		return chatRoomRepository.findById(roomId)
-			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Chat room not found."));
-	}
+  @Transactional
+  public void leave(Long roomId, Long userId) {
+    ChatRoom room = findRoom(roomId);
+    findAcceptedParticipantMatch(room.getMatchId(), userId);
+    chatRoomMemberStateRepository
+        .findByChatRoomIdAndUserId(room.getId(), userId)
+        .ifPresentOrElse(
+            ChatRoomMemberState::leave,
+            () ->
+                chatRoomMemberStateRepository.save(
+                    ChatRoomMemberState.leave(room.getId(), userId)));
+  }
 
-	private MatchProposal findAcceptedParticipantMatch(Long matchId, Long userId) {
-		MatchProposal match = matchProposalRepository.findById(matchId)
-			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Match not found."));
-		if (!isParticipant(match, userId)) {
-			throw new BusinessException(HttpStatus.FORBIDDEN, "Only participants can access this chat room.");
-		}
-		if (!match.isAccepted()) {
-			throw new BusinessException(HttpStatus.CONFLICT, "Chat room is available only after matching is completed.");
-		}
-		return match;
-	}
+  private ChatRoom findRoom(Long roomId) {
+    return chatRoomRepository
+        .findById(roomId)
+        .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Chat room not found."));
+  }
 
-	private ChatRoomSummaryView toSummaryView(ChatRoom room, Long userId) {
-		MatchProposal match = matchProposalRepository.findById(room.getMatchId())
-			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Match not found."));
-		ChatMessage lastMessage = chatMessageRepository
-			.findFirstByChatRoomIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(room.getId())
-			.orElse(null);
-		ProfileSummaryView counterpart = counterpartSummary(match, userId);
-		Instant lastMessageAt = lastMessage == null ? null : lastMessage.getCreatedAt();
-		return new ChatRoomSummaryView(
-			room.getId(),
-			match.getId(),
-			counterpart,
-			lastMessage == null ? null : lastMessage.getContent(),
-			lastMessageAt,
-			lastMessageAt == null ? room.getCreatedAt() : lastMessageAt
-		);
-	}
+  private MatchProposal findAcceptedParticipantMatch(Long matchId, Long userId) {
+    MatchProposal match =
+        matchProposalRepository
+            .findById(matchId)
+            .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Match not found."));
+    if (!isParticipant(match, userId)) {
+      throw new BusinessException(
+          HttpStatus.FORBIDDEN, "Only participants can access this chat room.");
+    }
+    moderation.requireAllowed(match.getUserAId(), match.getUserBId());
+    if (!match.isAccepted()) {
+      throw new BusinessException(
+          HttpStatus.CONFLICT, "Chat room is available only after matching is completed.");
+    }
+    return match;
+  }
 
-	private ChatRoomDetailView toDetailView(ChatRoom room, MatchProposal match, Long userId) {
-		return new ChatRoomDetailView(room.getId(), match.getId(), userId, counterpartSummary(match, userId));
-	}
+  private ChatRoomSummaryView toSummaryView(ChatRoom room, Long userId) {
+    MatchProposal match =
+        matchProposalRepository
+            .findById(room.getMatchId())
+            .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Match not found."));
+    ChatMessage lastMessage =
+        chatMessageRepository
+            .findFirstByChatRoomIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(room.getId())
+            .orElse(null);
+    ProfileSummaryView counterpart = counterpartSummary(match, userId);
+    Instant lastMessageAt = lastMessage == null ? null : lastMessage.getCreatedAt();
+    return new ChatRoomSummaryView(
+        room.getId(),
+        match.getId(),
+        counterpart,
+        lastMessage == null ? null : lastMessage.getContent(),
+        lastMessageAt,
+        lastMessageAt == null ? room.getCreatedAt() : lastMessageAt);
+  }
 
-	private ProfileSummaryView counterpartSummary(MatchProposal match, Long userId) {
-		Long counterpartUserId = counterpartUserId(match, userId);
-		UserAccount user = userAccountRepository.findById(counterpartUserId)
-			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "User not found."));
-		UserProfile profile = userProfileRepository.findByUserId(counterpartUserId).orElse(null);
-		ProfilePhoto photo = profilePhotoRepository.findFirstByUserIdOrderByDisplayOrderAscIdAsc(counterpartUserId)
-			.orElse(null);
-		return new ProfileSummaryView(
-			counterpartUserId,
-			user.getName(),
-			age(user.getBirthDate()),
-			user.getGender() == null ? null : user.getGender().name(),
-			profile == null ? null : profile.getJob(),
-			profile == null ? null : profile.getActivityRegion(),
-			photo == null ? null : photo.getImageUrl()
-		);
-	}
+  private ChatRoomDetailView toDetailView(ChatRoom room, MatchProposal match, Long userId) {
+    return new ChatRoomDetailView(
+        room.getId(), match.getId(), userId, counterpartSummary(match, userId));
+  }
 
-	private Long counterpartUserId(MatchProposal match, Long userId) {
-		return match.getUserAId().equals(userId) ? match.getUserBId() : match.getUserAId();
-	}
+  private ProfileSummaryView counterpartSummary(MatchProposal match, Long userId) {
+    Long counterpartUserId = counterpartUserId(match, userId);
+    UserAccount user =
+        userAccountRepository
+            .findById(counterpartUserId)
+            .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "User not found."));
+    UserProfile profile = userProfileRepository.findByUserId(counterpartUserId).orElse(null);
+    ProfilePhoto photo =
+        profilePhotoRepository
+            .findFirstByUserIdAndReviewStatusOrderByDisplayOrderAscIdAsc(
+                counterpartUserId,
+                com.oao.backend.user.domain.UserVerificationDocument.ReviewStatus.APPROVED)
+            .orElse(null);
+    return new ProfileSummaryView(
+        counterpartUserId,
+        user.getName(),
+        age(user.getBirthDate()),
+        user.getGender() == null ? null : user.getGender().name(),
+        profile == null ? null : profile.getJob(),
+        profile == null ? null : profile.getActivityRegion(),
+        photo == null ? null : photo.getImageUrl());
+  }
 
-	private ChatMessageView toMessageView(ChatMessage message) {
-		return new ChatMessageView(
-			message.getId(),
-			message.getChatRoomId(),
-			message.getSenderUserId(),
-			message.getMessageType(),
-			message.getContent(),
-			message.getCreatedAt(),
-			message.getReadAt()
-		);
-	}
+  private Long counterpartUserId(MatchProposal match, Long userId) {
+    return match.getUserAId().equals(userId) ? match.getUserBId() : match.getUserAId();
+  }
 
-	private boolean isParticipant(MatchProposal match, Long userId) {
-		return match.getUserAId().equals(userId) || match.getUserBId().equals(userId);
-	}
+  private ChatMessageView toMessageView(ChatMessage message) {
+    return new ChatMessageView(
+        message.getId(),
+        message.getChatRoomId(),
+        message.getSenderUserId(),
+        message.getMessageType(),
+        message.getContent(),
+        message.getCreatedAt(),
+        message.getReadAt());
+  }
 
-	private boolean hasLeftRoom(ChatRoom room, Long userId) {
-		return chatRoomMemberStateRepository.existsByChatRoomIdAndUserIdAndLeftAtIsNotNull(room.getId(), userId);
-	}
+  private boolean isParticipant(MatchProposal match, Long userId) {
+    return match.getUserAId().equals(userId) || match.getUserBId().equals(userId);
+  }
 
-	private void ensureNotLeft(ChatRoom room, Long userId) {
-		if (hasLeftRoom(room, userId)) {
-			throw new BusinessException(HttpStatus.GONE, "Chat room was left.");
-		}
-	}
+  private boolean hasLeftRoom(ChatRoom room, Long userId) {
+    return chatRoomMemberStateRepository.existsByChatRoomIdAndUserIdAndLeftAtIsNotNull(
+        room.getId(), userId);
+  }
 
-	private String normalizeMessageContent(String content) {
-		String normalized = content == null ? "" : content.trim();
-		if (normalized.isBlank()) {
-			throw new BusinessException(HttpStatus.BAD_REQUEST, "Message content is required.");
-		}
-		if (normalized.length() > MAX_MESSAGE_LENGTH) {
-			throw new BusinessException(HttpStatus.BAD_REQUEST, "Message content is too long.");
-		}
-		return normalized;
-	}
+  private void ensureNotLeft(ChatRoom room, Long userId) {
+    if (room.getStatus() != ChatRoomStatus.ACTIVE)
+      throw new BusinessException(HttpStatus.GONE, "종료된 채팅방입니다.");
+    if (hasLeftRoom(room, userId)) {
+      throw new BusinessException(HttpStatus.GONE, "Chat room was left.");
+    }
+  }
 
-	private Integer age(LocalDate birthDate) {
-		if (birthDate == null) {
-			return null;
-		}
-		int age = Period.between(birthDate, LocalDate.now(DEFAULT_ZONE)).getYears();
-		return age > 0 ? age : null;
-	}
+  private String normalizeMessageContent(String content) {
+    String normalized = content == null ? "" : content.trim();
+    if (normalized.isBlank()) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, "Message content is required.");
+    }
+    if (normalized.length() > MAX_MESSAGE_LENGTH) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, "Message content is too long.");
+    }
+    return normalized;
+  }
 
-	public record ChatRoomSummaryView(
-		Long roomId,
-		Long matchId,
-		ProfileSummaryView counterpart,
-		String lastMessage,
-		Instant lastMessageAt,
-		Instant sortAt
-	) {
-	}
+  private Integer age(LocalDate birthDate) {
+    if (birthDate == null) {
+      return null;
+    }
+    int age = Period.between(birthDate, LocalDate.now(DEFAULT_ZONE)).getYears();
+    return age > 0 ? age : null;
+  }
 
-	public record ChatRoomDetailView(
-		Long roomId,
-		Long matchId,
-		Long viewerUserId,
-		ProfileSummaryView counterpart
-	) {
-	}
+  public record ChatRoomSummaryView(
+      Long roomId,
+      Long matchId,
+      ProfileSummaryView counterpart,
+      String lastMessage,
+      Instant lastMessageAt,
+      Instant sortAt) {}
 
-	public record ChatMessageView(
-		Long messageId,
-		Long roomId,
-		Long senderUserId,
-		String messageType,
-		String content,
-		Instant createdAt,
-		Instant readAt
-	) {
-	}
+  public record ChatRoomDetailView(
+      Long roomId, Long matchId, Long viewerUserId, ProfileSummaryView counterpart) {}
 
-	public record ProfileSummaryView(
-		Long userId,
-		String name,
-		Integer age,
-		String gender,
-		String job,
-		String activityRegion,
-		String photoUrl
-	) {
-	}
+  public record ChatMessageView(
+      Long messageId,
+      Long roomId,
+      Long senderUserId,
+      String messageType,
+      String content,
+      Instant createdAt,
+      Instant readAt) {}
+
+  public record ProfileSummaryView(
+      Long userId,
+      String name,
+      Integer age,
+      String gender,
+      String job,
+      String activityRegion,
+      String photoUrl) {}
 }

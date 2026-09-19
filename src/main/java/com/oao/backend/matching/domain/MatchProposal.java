@@ -2,13 +2,13 @@ package com.oao.backend.matching.domain;
 
 import com.oao.backend.common.BaseTimeEntity;
 import com.oao.backend.common.BusinessException;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Column;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
@@ -17,245 +17,250 @@ import org.springframework.http.HttpStatus;
 @Table(name = "match_proposal")
 public class MatchProposal extends BaseTimeEntity {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-	@Enumerated(EnumType.STRING)
-	@Column(name = "match_type")
-	private MatchType matchType;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "match_type")
+  private MatchType matchType;
 
-	@Column(name = "user_a_id")
-	private Long userAId;
+  @Column(name = "user_a_id")
+  private Long userAId;
 
-	@Column(name = "user_b_id")
-	private Long userBId;
+  @Column(name = "user_b_id")
+  private Long userBId;
 
-	@Column(name = "requested_by_user_id")
-	private Long requestedByUserId;
+  @Column(name = "requested_by_user_id")
+  private Long requestedByUserId;
 
-	@Enumerated(EnumType.STRING)
-	private MatchStatus status = MatchStatus.PENDING;
+  @Enumerated(EnumType.STRING)
+  private MatchStatus status = MatchStatus.PENDING;
 
-	@Column(name = "matched_reason")
-	private String matchedReason;
+  @Column(name = "matched_reason")
+  private String matchedReason;
 
-	@Column(name = "is_s_grade_guaranteed")
-	private boolean sGradeGuaranteed;
+  @Column(name = "is_s_grade_guaranteed")
+  private boolean sGradeGuaranteed;
 
-	@Column(name = "matched_at")
-	private Instant matchedAt;
+  @Column(name = "matched_at")
+  private Instant matchedAt;
 
-	@Column(name = "expires_at")
-	private Instant expiresAt;
+  @Column(name = "expires_at")
+  private Instant expiresAt;
 
-	@Enumerated(EnumType.STRING)
-	@Column(name = "user_a_decision")
-	private MatchDecision userADecision = MatchDecision.PENDING;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "user_a_decision")
+  private MatchDecision userADecision = MatchDecision.PENDING;
 
-	@Enumerated(EnumType.STRING)
-	@Column(name = "user_b_decision")
-	private MatchDecision userBDecision = MatchDecision.PENDING;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "user_b_decision")
+  private MatchDecision userBDecision = MatchDecision.PENDING;
 
-	@Column(name = "user_a_decided_at")
-	private Instant userADecidedAt;
+  @Column(name = "user_a_decided_at")
+  private Instant userADecidedAt;
 
-	@Column(name = "user_b_decided_at")
-	private Instant userBDecidedAt;
+  @Column(name = "user_b_decided_at")
+  private Instant userBDecidedAt;
 
-	@Column(name = "accepted_at")
-	private Instant acceptedAt;
+  @Column(name = "accepted_at")
+  private Instant acceptedAt;
 
-	@Column(name = "rejected_at")
-	private Instant rejectedAt;
+  @Column(name = "rejected_at")
+  private Instant rejectedAt;
 
-	@Column(name = "expired_at")
-	private Instant expiredAt;
+  @Column(name = "expired_at")
+  private Instant expiredAt;
 
-	@Column(name = "closed_at")
-	private Instant closedAt;
+  @Column(name = "closed_at")
+  private Instant closedAt;
 
-	protected MatchProposal() {
-	}
+  protected MatchProposal() {}
 
-	public static MatchProposal createAuto(
-		Long userAId,
-		Long userBId,
-		String matchedReason,
-		boolean sGradeGuaranteed,
-		Instant matchedAt,
-		Instant expiresAt
-	) {
-		MatchProposal proposal = new MatchProposal();
-		proposal.matchType = MatchType.AUTO;
-		proposal.userAId = userAId;
-		proposal.userBId = userBId;
-		proposal.status = MatchStatus.PENDING;
-		proposal.matchedReason = matchedReason;
-		proposal.sGradeGuaranteed = sGradeGuaranteed;
-		proposal.matchedAt = matchedAt;
-		proposal.expiresAt = expiresAt;
-		proposal.userADecision = MatchDecision.PENDING;
-		proposal.userBDecision = MatchDecision.PENDING;
-		return proposal;
-	}
+  public static MatchProposal createAuto(
+      Long userAId,
+      Long userBId,
+      String matchedReason,
+      boolean sGradeGuaranteed,
+      Instant matchedAt,
+      Instant expiresAt) {
+    MatchProposal proposal = new MatchProposal();
+    proposal.matchType = MatchType.AUTO;
+    proposal.userAId = userAId;
+    proposal.userBId = userBId;
+    proposal.status = MatchStatus.PENDING;
+    proposal.matchedReason = matchedReason;
+    proposal.sGradeGuaranteed = sGradeGuaranteed;
+    proposal.matchedAt = matchedAt;
+    proposal.expiresAt = expiresAt;
+    proposal.userADecision = MatchDecision.PENDING;
+    proposal.userBDecision = MatchDecision.PENDING;
+    return proposal;
+  }
 
-	public static MatchProposal createManual(
-		Long userAId,
-		Long userBId,
-		Long requestedByUserId,
-		String matchedReason,
-		Instant matchedAt,
-		Instant expiresAt
-	) {
-		MatchProposal proposal = new MatchProposal();
-		proposal.matchType = MatchType.PREMIUM_MANUAL;
-		proposal.userAId = userAId;
-		proposal.userBId = userBId;
-		proposal.requestedByUserId = requestedByUserId;
-		proposal.status = MatchStatus.PENDING;
-		proposal.matchedReason = matchedReason;
-		proposal.sGradeGuaranteed = false;
-		proposal.matchedAt = matchedAt;
-		proposal.expiresAt = expiresAt;
-		proposal.userADecision = MatchDecision.PENDING;
-		proposal.userBDecision = MatchDecision.PENDING;
-		return proposal;
-	}
+  public static MatchProposal createManual(
+      Long userAId,
+      Long userBId,
+      Long requestedByUserId,
+      String matchedReason,
+      Instant matchedAt,
+      Instant expiresAt) {
+    MatchProposal proposal = new MatchProposal();
+    proposal.matchType = MatchType.PREMIUM_MANUAL;
+    proposal.userAId = userAId;
+    proposal.userBId = userBId;
+    proposal.requestedByUserId = requestedByUserId;
+    proposal.status = MatchStatus.PENDING;
+    proposal.matchedReason = matchedReason;
+    proposal.sGradeGuaranteed = false;
+    proposal.matchedAt = matchedAt;
+    proposal.expiresAt = expiresAt;
+    proposal.userADecision = MatchDecision.PENDING;
+    proposal.userBDecision = MatchDecision.PENDING;
+    return proposal;
+  }
 
-	public static MatchProposal createAcceptedInterest(
-		Long userAId,
-		Long userBId,
-		Long requestedByUserId,
-		String matchedReason,
-		Instant matchedAt
-	) {
-		MatchProposal proposal = new MatchProposal();
-		proposal.matchType = MatchType.INTEREST;
-		proposal.userAId = userAId;
-		proposal.userBId = userBId;
-		proposal.requestedByUserId = requestedByUserId;
-		proposal.status = MatchStatus.ACCEPTED;
-		proposal.matchedReason = matchedReason;
-		proposal.sGradeGuaranteed = false;
-		proposal.matchedAt = matchedAt;
-		proposal.expiresAt = null;
-		proposal.userADecision = MatchDecision.ACCEPTED;
-		proposal.userBDecision = MatchDecision.ACCEPTED;
-		proposal.userADecidedAt = matchedAt;
-		proposal.userBDecidedAt = matchedAt;
-		proposal.acceptedAt = matchedAt;
-		return proposal;
-	}
+  public static MatchProposal createAcceptedInterest(
+      Long userAId, Long userBId, Long requestedByUserId, String matchedReason, Instant matchedAt) {
+    MatchProposal proposal = new MatchProposal();
+    proposal.matchType = MatchType.INTEREST;
+    proposal.userAId = userAId;
+    proposal.userBId = userBId;
+    proposal.requestedByUserId = requestedByUserId;
+    proposal.status = MatchStatus.ACCEPTED;
+    proposal.matchedReason = matchedReason;
+    proposal.sGradeGuaranteed = false;
+    proposal.matchedAt = matchedAt;
+    proposal.expiresAt = null;
+    proposal.userADecision = MatchDecision.ACCEPTED;
+    proposal.userBDecision = MatchDecision.ACCEPTED;
+    proposal.userADecidedAt = matchedAt;
+    proposal.userBDecidedAt = matchedAt;
+    proposal.acceptedAt = matchedAt;
+    return proposal;
+  }
 
-	public void accept(Long userId) {
-		ensurePending();
-		decide(userId, MatchDecision.ACCEPTED);
-		if (userADecision == MatchDecision.ACCEPTED && userBDecision == MatchDecision.ACCEPTED) {
-			this.status = MatchStatus.ACCEPTED;
-			this.acceptedAt = Instant.now();
-		}
-	}
+  public static MatchProposal createInstant(
+      Long a, Long b, Long requester, String reason, Instant now, Instant expires) {
+    MatchProposal proposal = createManual(a, b, requester, reason, now, expires);
+    proposal.matchType = MatchType.INSTANT;
+    return proposal;
+  }
 
-	public void reject(Long userId) {
-		ensurePending();
-		decide(userId, MatchDecision.REJECTED);
-		this.status = MatchStatus.REJECTED;
-		this.rejectedAt = Instant.now();
-	}
+  public void markPremium() {
+    this.matchType = MatchType.PREMIUM_MANUAL;
+  }
 
-	public void close() {
-		this.status = MatchStatus.CLOSED;
-		this.closedAt = Instant.now();
-	}
+  public void accept(Long userId) {
+    ensurePending();
+    decide(userId, MatchDecision.ACCEPTED);
+    if (userADecision == MatchDecision.ACCEPTED && userBDecision == MatchDecision.ACCEPTED) {
+      this.status = MatchStatus.ACCEPTED;
+      this.acceptedAt = Instant.now();
+    }
+  }
 
-	public boolean isAccepted() {
-		return status == MatchStatus.ACCEPTED;
-	}
+  public void reject(Long userId) {
+    ensurePending();
+    decide(userId, MatchDecision.REJECTED);
+    this.status = MatchStatus.REJECTED;
+    this.rejectedAt = Instant.now();
+  }
 
-	public Long getId() {
-		return id;
-	}
+  public void close() {
+    this.status = MatchStatus.CLOSED;
+    this.closedAt = Instant.now();
+  }
 
-	public MatchStatus getStatus() {
-		return status;
-	}
+  public boolean isAccepted() {
+    return status == MatchStatus.ACCEPTED;
+  }
 
-	public MatchType getMatchType() {
-		return matchType;
-	}
+  public Long getId() {
+    return id;
+  }
 
-	public Long getUserAId() {
-		return userAId;
-	}
+  public MatchStatus getStatus() {
+    return status;
+  }
 
-	public Long getUserBId() {
-		return userBId;
-	}
+  public MatchType getMatchType() {
+    return matchType;
+  }
 
-	public String getMatchedReason() {
-		return matchedReason;
-	}
+  public Long getUserAId() {
+    return userAId;
+  }
 
-	public boolean isSGradeGuaranteed() {
-		return sGradeGuaranteed;
-	}
+  public Long getUserBId() {
+    return userBId;
+  }
 
-	public Instant getMatchedAt() {
-		return matchedAt;
-	}
+  public String getMatchedReason() {
+    return matchedReason;
+  }
 
-	public Instant getExpiresAt() {
-		return expiresAt;
-	}
+  public boolean isSGradeGuaranteed() {
+    return sGradeGuaranteed;
+  }
 
-	public MatchDecision getUserADecision() {
-		return userADecision;
-	}
+  public Instant getMatchedAt() {
+    return matchedAt;
+  }
 
-	public MatchDecision getUserBDecision() {
-		return userBDecision;
-	}
+  public Instant getExpiresAt() {
+    return expiresAt;
+  }
 
-	private void ensurePending() {
-		if (status != MatchStatus.PENDING) {
-			throw new BusinessException(HttpStatus.CONFLICT, "Match is not waiting for a decision.");
-		}
-	}
+  public MatchDecision getUserADecision() {
+    return userADecision;
+  }
 
-	private void decide(Long userId, MatchDecision decision) {
-		Instant now = Instant.now();
-		if (userAId.equals(userId)) {
-			this.userADecision = decision;
-			this.userADecidedAt = now;
-			return;
-		}
-		if (userBId.equals(userId)) {
-			this.userBDecision = decision;
-			this.userBDecidedAt = now;
-			return;
-		}
-		throw new BusinessException(HttpStatus.FORBIDDEN, "User is not a participant of this match.");
-	}
+  public MatchDecision getUserBDecision() {
+    return userBDecision;
+  }
 
-	public enum MatchType {
-		AUTO,
-		INSTANT,
-		PREMIUM_MANUAL,
-		INTEREST
-	}
+  private void ensurePending() {
+    if (expiresAt != null && !expiresAt.isAfter(Instant.now()))
+      throw new BusinessException(HttpStatus.CONFLICT, "매칭 응답 기한이 만료되었습니다.");
+    if (status != MatchStatus.PENDING) {
+      throw new BusinessException(HttpStatus.CONFLICT, "Match is not waiting for a decision.");
+    }
+  }
 
-	public enum MatchStatus {
-		PENDING,
-		ACCEPTED,
-		REJECTED,
-		EXPIRED,
-		CLOSED
-	}
+  private void decide(Long userId, MatchDecision decision) {
+    Instant now = Instant.now();
+    if (userAId.equals(userId)) {
+      this.userADecision = decision;
+      this.userADecidedAt = now;
+      return;
+    }
+    if (userBId.equals(userId)) {
+      this.userBDecision = decision;
+      this.userBDecidedAt = now;
+      return;
+    }
+    throw new BusinessException(HttpStatus.FORBIDDEN, "User is not a participant of this match.");
+  }
 
-	public enum MatchDecision {
-		PENDING,
-		ACCEPTED,
-		REJECTED
-	}
+  public enum MatchType {
+    AUTO,
+    INSTANT,
+    PREMIUM_MANUAL,
+    INTEREST
+  }
+
+  public enum MatchStatus {
+    PENDING,
+    ACCEPTED,
+    REJECTED,
+    EXPIRED,
+    CLOSED
+  }
+
+  public enum MatchDecision {
+    PENDING,
+    ACCEPTED,
+    REJECTED
+  }
 }

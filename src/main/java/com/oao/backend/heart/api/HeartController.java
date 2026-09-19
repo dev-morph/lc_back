@@ -26,91 +26,90 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class HeartController {
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.oao.backend.dev.service.DevToolGuardService devGuard;
 
-	private final InstantIntroductionService instantIntroductionService;
-	private final HeartProductService heartProductService;
-	private final HeartPurchaseService heartPurchaseService;
-	private final HeartWalletRepository heartWalletRepository;
-	private final HeartTransactionRepository heartTransactionRepository;
+  private final InstantIntroductionService instantIntroductionService;
+  private final HeartProductService heartProductService;
+  private final HeartPurchaseService heartPurchaseService;
+  private final HeartWalletRepository heartWalletRepository;
+  private final HeartTransactionRepository heartTransactionRepository;
 
-	public HeartController(
-		InstantIntroductionService instantIntroductionService,
-		HeartProductService heartProductService,
-		HeartPurchaseService heartPurchaseService,
-		HeartWalletRepository heartWalletRepository,
-		HeartTransactionRepository heartTransactionRepository
-	) {
-		this.instantIntroductionService = instantIntroductionService;
-		this.heartProductService = heartProductService;
-		this.heartPurchaseService = heartPurchaseService;
-		this.heartWalletRepository = heartWalletRepository;
-		this.heartTransactionRepository = heartTransactionRepository;
-	}
+  public HeartController(
+      InstantIntroductionService instantIntroductionService,
+      HeartProductService heartProductService,
+      HeartPurchaseService heartPurchaseService,
+      HeartWalletRepository heartWalletRepository,
+      HeartTransactionRepository heartTransactionRepository) {
+    this.instantIntroductionService = instantIntroductionService;
+    this.heartProductService = heartProductService;
+    this.heartPurchaseService = heartPurchaseService;
+    this.heartWalletRepository = heartWalletRepository;
+    this.heartTransactionRepository = heartTransactionRepository;
+  }
 
-	@GetMapping("/me/hearts")
-	ApiResponse<HeartBalanceResponse> hearts(
-		@AuthenticationPrincipal KakaoPrincipal principal,
-		@RequestHeader(value = "X-User-Id", required = false) Long headerUserId
-	) {
-		Long userId = resolveUserId(principal, headerUserId);
-		int balance = heartWalletRepository.findByUserId(userId)
-			.map(wallet -> wallet.getBalance())
-			.orElse(0);
-		return ApiResponse.ok(new HeartBalanceResponse(userId, balance));
-	}
+  @GetMapping("/me/hearts")
+  ApiResponse<HeartBalanceResponse> hearts(
+      @AuthenticationPrincipal KakaoPrincipal principal,
+      @RequestHeader(value = "X-User-Id", required = false) Long headerUserId) {
+    Long userId = resolveUserId(principal, headerUserId);
+    int balance =
+        heartWalletRepository.findByUserId(userId).map(wallet -> wallet.getBalance()).orElse(0);
+    return ApiResponse.ok(new HeartBalanceResponse(userId, balance));
+  }
 
-	@GetMapping("/me/hearts/transactions")
-	ApiResponse<List<HeartTransaction>> heartTransactions(
-		@AuthenticationPrincipal KakaoPrincipal principal,
-		@RequestHeader(value = "X-User-Id", required = false) Long headerUserId
-	) {
-		Long userId = resolveUserId(principal, headerUserId);
-		return ApiResponse.ok(heartTransactionRepository.findByUserIdOrderByCreatedAtDesc(userId));
-	}
+  @GetMapping("/me/hearts/transactions")
+  ApiResponse<List<HeartTransaction>> heartTransactions(
+      @AuthenticationPrincipal KakaoPrincipal principal,
+      @RequestHeader(value = "X-User-Id", required = false) Long headerUserId) {
+    Long userId = resolveUserId(principal, headerUserId);
+    return ApiResponse.ok(heartTransactionRepository.findByUserIdOrderByCreatedAtDesc(userId));
+  }
 
-	@GetMapping("/me/instant-introduction-cost")
-	ApiResponse<InstantIntroductionCost> instantIntroductionCost(
-		@AuthenticationPrincipal KakaoPrincipal principal,
-		@RequestHeader(value = "X-User-Id", required = false) Long headerUserId
-	) {
-		return ApiResponse.ok(instantIntroductionService.currentCost(resolveUserId(principal, headerUserId)));
-	}
+  @GetMapping("/me/instant-introduction-cost")
+  ApiResponse<InstantIntroductionCost> instantIntroductionCost(
+      @AuthenticationPrincipal KakaoPrincipal principal,
+      @RequestHeader(value = "X-User-Id", required = false) Long headerUserId) {
+    return ApiResponse.ok(
+        instantIntroductionService.currentCost(resolveUserId(principal, headerUserId)));
+  }
 
-	@PostMapping("/matching/instant-introductions")
-	ApiResponse<InstantIntroductionResult> requestInstantIntroduction(
-		@AuthenticationPrincipal KakaoPrincipal principal,
-		@RequestHeader(value = "X-User-Id", required = false) Long headerUserId
-	) {
-		return ApiResponse.ok(instantIntroductionService.request(resolveUserId(principal, headerUserId)));
-	}
+  @PostMapping("/matching/instant-introductions")
+  ApiResponse<InstantIntroductionResult> requestInstantIntroduction(
+      @AuthenticationPrincipal KakaoPrincipal principal,
+      @RequestHeader(value = "X-User-Id", required = false) Long headerUserId) {
+    return ApiResponse.ok(
+        instantIntroductionService.request(resolveUserId(principal, headerUserId)));
+  }
 
-	@GetMapping("/hearts/products")
-	ApiResponse<List<HeartProductView>> heartProducts() {
-		return ApiResponse.ok(heartProductService.findActiveProducts());
-	}
+  @GetMapping("/hearts/products")
+  ApiResponse<List<HeartProductView>> heartProducts() {
+    return ApiResponse.ok(heartProductService.findActiveProducts());
+  }
 
-	@PostMapping("/hearts/purchases/mock")
-	ApiResponse<HeartPurchaseResult> purchaseMock(
-		@AuthenticationPrincipal KakaoPrincipal principal,
-		@RequestHeader(value = "X-User-Id", required = false) Long headerUserId,
-		@Valid @RequestBody MockPurchaseRequest request
-	) {
-		return ApiResponse.ok(heartPurchaseService.purchaseMock(resolveUserId(principal, headerUserId), request.heartProductId()));
-	}
+  @PostMapping("/hearts/purchases/mock")
+  ApiResponse<HeartPurchaseResult> purchaseMock(
+      @AuthenticationPrincipal KakaoPrincipal principal,
+      @RequestHeader(value = "X-User-Id", required = false) Long headerUserId,
+      @RequestHeader(value = "X-Dev-Secret", required = false) String devSecret,
+      @Valid @RequestBody MockPurchaseRequest request) {
+    devGuard.requireSecret(devSecret);
+    return ApiResponse.ok(
+        heartPurchaseService.purchaseMock(
+            resolveUserId(principal, headerUserId), request.heartProductId()));
+  }
 
-	record HeartBalanceResponse(Long userId, int balance) {
-	}
+  record HeartBalanceResponse(Long userId, int balance) {}
 
-	record MockPurchaseRequest(@NotNull Long heartProductId) {
-	}
+  record MockPurchaseRequest(@NotNull Long heartProductId) {}
 
-	private Long resolveUserId(KakaoPrincipal principal, Long headerUserId) {
-		if (principal != null) {
-			return principal.getUserId();
-		}
-		if (headerUserId != null) {
-			return headerUserId;
-		}
-		throw new BusinessException(HttpStatus.UNAUTHORIZED, "Login is required.");
-	}
+  private Long resolveUserId(KakaoPrincipal principal, Long headerUserId) {
+    if (principal != null) {
+      return principal.getUserId();
+    }
+    if (headerUserId != null) {
+      return headerUserId;
+    }
+    throw new BusinessException(HttpStatus.UNAUTHORIZED, "Login is required.");
+  }
 }

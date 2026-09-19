@@ -26,6 +26,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation 'com.solapi:sdk:1.0.3'
+	implementation platform('software.amazon.awssdk:bom:2.49.6')
+	implementation 'software.amazon.awssdk:sesv2'
 	implementation 'org.flywaydb:flyway-mysql'
 	developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
 	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
@@ -42,4 +44,12 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// Isolated fixtures and fake email delivery for browser QA; never included in the production jar.
+tasks.register('localPreview', JavaExec) {
+	group = 'verification'
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.oao.backend.LocalPreviewApplication'
 }

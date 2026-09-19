@@ -17,42 +17,32 @@ import org.springframework.stereotype.Controller;
 @Controller
 public class ChatWebSocketController {
 
-	private final ChatService chatService;
-	private final SimpMessagingTemplate messagingTemplate;
+  private final ChatService chatService;
+  private final SimpMessagingTemplate messagingTemplate;
 
-	public ChatWebSocketController(ChatService chatService, SimpMessagingTemplate messagingTemplate) {
-		this.chatService = chatService;
-		this.messagingTemplate = messagingTemplate;
-	}
+  public ChatWebSocketController(ChatService chatService, SimpMessagingTemplate messagingTemplate) {
+    this.chatService = chatService;
+    this.messagingTemplate = messagingTemplate;
+  }
 
-	@MessageMapping("/chat.rooms.{roomId}.send")
-	public void send(
-		@DestinationVariable Long roomId,
-		@Payload SendChatMessageRequest request,
-		Principal principal,
-		SimpMessageHeaderAccessor headers
-	) {
-		Long senderUserId = resolveUserId(principal, headers);
-		ChatMessageView message = chatService.sendTextMessage(roomId, senderUserId, request.content());
-		messagingTemplate.convertAndSend("/topic/chat.rooms." + roomId, message);
-	}
+  @MessageMapping("/chat.rooms.{roomId}.send")
+  public void send(
+      @DestinationVariable Long roomId,
+      @Payload SendChatMessageRequest request,
+      Principal principal,
+      SimpMessageHeaderAccessor headers) {
+    Long senderUserId = resolveUserId(principal, headers);
+    ChatMessageView message = chatService.sendTextMessage(roomId, senderUserId, request.content());
+    messagingTemplate.convertAndSend("/topic/chat.rooms." + roomId, message);
+  }
 
-	private Long resolveUserId(Principal principal, SimpMessageHeaderAccessor headers) {
-		if (principal instanceof Authentication authentication
-			&& authentication.getPrincipal() instanceof KakaoPrincipal kakaoPrincipal) {
-			return kakaoPrincipal.getUserId();
-		}
-		String headerUserId = headers.getFirstNativeHeader("X-User-Id");
-		if (headerUserId != null && !headerUserId.isBlank()) {
-			try {
-				return Long.parseLong(headerUserId);
-			} catch (NumberFormatException ignored) {
-				throw new BusinessException(HttpStatus.UNAUTHORIZED, "Login is required.");
-			}
-		}
-		throw new BusinessException(HttpStatus.UNAUTHORIZED, "Login is required.");
-	}
+  private Long resolveUserId(Principal principal, SimpMessageHeaderAccessor headers) {
+    if (principal instanceof Authentication authentication
+        && authentication.getPrincipal() instanceof KakaoPrincipal kakaoPrincipal) {
+      return kakaoPrincipal.getUserId();
+    }
+    throw new BusinessException(HttpStatus.UNAUTHORIZED, "Login is required.");
+  }
 
-	record SendChatMessageRequest(String content) {
-	}
+  record SendChatMessageRequest(String content) {}
 }

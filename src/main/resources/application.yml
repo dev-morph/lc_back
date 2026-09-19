@@ -28,6 +28,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          time_zone: UTC
   security:
     oauth2:
       client:
@@ -53,6 +55,25 @@ oao:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
   auth:
     oauth-success-redirect-url: ${OAUTH_SUCCESS_REDIRECT_URL:http://localhost:3000/oauth/success}
+  alimtalk:
+    enabled: ${ALIMTALK_ENABLED:false}
+    pf-id: ${ALIMTALK_PF_ID:}
+    match-template: ${ALIMTALK_MATCH_TEMPLATE_ID:}
+    express-template: ${ALIMTALK_EXPRESS_TEMPLATE_ID:}
+    completed-template: ${ALIMTALK_COMPLETED_TEMPLATE_ID:}
+  payment:
+    frontend-url: ${APP_FRONTEND_URL:http://localhost:3000}
+    toss:
+      secret-key: ${TOSS_PAYMENTS_SECRET_KEY:}
+      client-key: ${TOSS_PAYMENTS_CLIENT_KEY:}
+  email:
+    region: ${AWS_SES_REGION:ap-northeast-2}
+    from: ${EMAIL_FROM:LoveCatcher <hello@oao365.com>}
+  admin:
+    bootstrap:
+      email: ${OAO_ADMIN_BOOTSTRAP_EMAIL:}
+      password: ${OAO_ADMIN_BOOTSTRAP_PASSWORD:}
+      name: ${OAO_ADMIN_BOOTSTRAP_NAME:관리자}
   dev-tools:
     enabled: ${OAO_DEV_TOOLS_ENABLED:false}
     secret: ${OAO_DEV_TOOLS_SECRET:}
@@ -68,7 +89,7 @@ oao:
   verification:
     message:
       provider: ${VERIFICATION_MESSAGE_PROVIDER:mock}
-      dev-code-response-enabled: ${VERIFICATION_DEV_CODE_RESPONSE_ENABLED:true}
+      dev-code-response-enabled: ${VERIFICATION_DEV_CODE_RESPONSE_ENABLED:false}
       alimtalk:
         api-key: ${ALIMTALK_API_KEY:}
         api-secret: ${ALIMTALK_API_SECRET:}

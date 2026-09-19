@@ -12,69 +12,84 @@ import java.time.Instant;
 @Table(name = "matching_profile")
 public class MatchingProfile extends BaseTimeEntity {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-	private Long userId;
-	private String jobIntro;
-	private String datingStyle;
-	private boolean matchingEnabled;
-	private Instant lastAutoMatchedAt;
-	private int autoMatchCount;
-	private int sGradeGuaranteedMatchCount;
-	private int noResponseCount;
+  private Long userId;
+  private String jobIntro;
+  private String datingStyle;
+  private String personalityKeywords;
 
-	protected MatchingProfile() {
-	}
+  public String getDatingStyle() {
+    return datingStyle;
+  }
 
-	public static MatchingProfile create(Long userId) {
-		MatchingProfile profile = new MatchingProfile();
-		profile.userId = userId;
-		profile.matchingEnabled = false;
-		profile.autoMatchCount = 0;
-		profile.sGradeGuaranteedMatchCount = 0;
-		profile.noResponseCount = 0;
-		return profile;
-	}
+  public java.util.List<String> getPersonalityKeywords() {
+    return personalityKeywords == null || personalityKeywords.isBlank()
+        ? java.util.List.of()
+        : java.util.Arrays.asList(personalityKeywords.split(","));
+  }
 
-	public void updateIntro(String intro) {
-		this.jobIntro = intro;
-	}
+  private boolean matchingEnabled;
+  private Instant lastAutoMatchedAt;
+  private int autoMatchCount;
+  private int sGradeGuaranteedMatchCount;
+  private int noResponseCount;
 
-	public boolean isEligibleForSGradeGuarantee(int guaranteeCount) {
-		return sGradeGuaranteedMatchCount < guaranteeCount;
-	}
+  protected MatchingProfile() {}
 
-	public void recordAutoMatch(boolean sGradeGuaranteed) {
-		this.autoMatchCount++;
-		this.lastAutoMatchedAt = Instant.now();
-		if (sGradeGuaranteed) {
-			this.sGradeGuaranteedMatchCount++;
-		}
-	}
+  public static MatchingProfile create(Long userId) {
+    MatchingProfile profile = new MatchingProfile();
+    profile.userId = userId;
+    profile.matchingEnabled = false;
+    profile.autoMatchCount = 0;
+    profile.sGradeGuaranteedMatchCount = 0;
+    profile.noResponseCount = 0;
+    return profile;
+  }
 
-	public Long getId() {
-		return id;
-	}
+  public void pauseMatching() {
+    this.matchingEnabled = false;
+  }
 
-	public Long getUserId() {
-		return userId;
-	}
+  public void updateIntro(String intro) {
+    this.jobIntro = intro;
+  }
 
-	public String getJobIntro() {
-		return jobIntro;
-	}
+  public boolean isEligibleForSGradeGuarantee(int guaranteeCount) {
+    return sGradeGuaranteedMatchCount < guaranteeCount;
+  }
 
-	public boolean isMatchingEnabled() {
-		return matchingEnabled;
-	}
+  public void recordAutoMatch(boolean sGradeGuaranteed) {
+    this.autoMatchCount++;
+    this.lastAutoMatchedAt = Instant.now();
+    if (sGradeGuaranteed) {
+      this.sGradeGuaranteedMatchCount++;
+    }
+  }
 
-	public Instant getLastAutoMatchedAt() {
-		return lastAutoMatchedAt;
-	}
+  public Long getId() {
+    return id;
+  }
 
-	public int getAutoMatchCount() {
-		return autoMatchCount;
-	}
+  public Long getUserId() {
+    return userId;
+  }
+
+  public String getJobIntro() {
+    return jobIntro;
+  }
+
+  public boolean isMatchingEnabled() {
+    return matchingEnabled;
+  }
+
+  public Instant getLastAutoMatchedAt() {
+    return lastAutoMatchedAt;
+  }
+
+  public int getAutoMatchCount() {
+    return autoMatchCount;
+  }
 }

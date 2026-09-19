@@ -7,69 +7,77 @@ import java.util.Map;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
-public class KakaoPrincipal implements OAuth2User {
+public class KakaoPrincipal implements OAuth2User, java.io.Serializable {
+  private int authVersion;
 
-	private final Long userId;
-	private final String providerUserId;
-	private final String email;
-	private final String nickname;
-	private final ApprovalStatus approvalStatus;
-	private final MemberGrade grade;
-	private final Map<String, Object> attributes;
-	private final Collection<? extends GrantedAuthority> authorities;
+  public int getAuthVersion() {
+    return authVersion;
+  }
 
-	public KakaoPrincipal(
-		Long userId,
-		String providerUserId,
-		String email,
-		String nickname,
-		ApprovalStatus approvalStatus,
-		MemberGrade grade,
-		Map<String, Object> attributes,
-		Collection<? extends GrantedAuthority> authorities
-	) {
-		this.userId = userId;
-		this.providerUserId = providerUserId;
-		this.email = email;
-		this.nickname = nickname;
-		this.approvalStatus = approvalStatus;
-		this.grade = grade;
-		this.attributes = attributes;
-		this.authorities = authorities;
-	}
+  public void setAuthVersion(int version) {
+    this.authVersion = version;
+  }
 
-	@Override
-	public Map<String, Object> getAttributes() {
-		return attributes;
-	}
+  private final Long userId;
+  private final String providerUserId;
+  private final String email;
+  private final String nickname;
+  private final ApprovalStatus approvalStatus;
+  private final MemberGrade grade;
+  private final Map<String, Object> attributes;
+  private final Collection<? extends GrantedAuthority> authorities;
 
-	@Override
-	public Collection<? extends GrantedAuthority> getAuthorities() {
-		return authorities;
-	}
+  public KakaoPrincipal(
+      Long userId,
+      String providerUserId,
+      String email,
+      String nickname,
+      ApprovalStatus approvalStatus,
+      MemberGrade grade,
+      Map<String, Object> attributes,
+      Collection<? extends GrantedAuthority> authorities) {
+    this.userId = userId;
+    this.providerUserId = providerUserId;
+    this.email = email;
+    this.nickname = nickname;
+    this.approvalStatus = approvalStatus;
+    this.grade = grade;
+    this.attributes = attributes;
+    this.authorities = authorities;
+  }
 
-	@Override
-	public String getName() {
-		return providerUserId;
-	}
+  @Override
+  public Map<String, Object> getAttributes() {
+    return attributes;
+  }
 
-	public Long getUserId() {
-		return userId;
-	}
+  @Override
+  public Collection<? extends GrantedAuthority> getAuthorities() {
+    return authorities;
+  }
 
-	public String getEmail() {
-		return email;
-	}
+  @Override
+  public String getName() {
+    return providerUserId;
+  }
 
-	public String getNickname() {
-		return nickname;
-	}
+  public Long getUserId() {
+    return userId;
+  }
 
-	public ApprovalStatus getApprovalStatus() {
-		return approvalStatus;
-	}
+  public String getEmail() {
+    return email;
+  }
 
-	public MemberGrade getGrade() {
-		return grade;
-	}
+  public String getNickname() {
+    return nickname;
+  }
+
+  public ApprovalStatus getApprovalStatus() {
+    return approvalStatus;
+  }
+
+  public MemberGrade getGrade() {
+    return grade;
+  }
 }

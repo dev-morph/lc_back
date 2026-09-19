@@ -6,6 +6,13 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-production-deploy
+  cancel-in-progress: false
+
 jobs:
   test:
     name: Test
@@ -36,7 +43,9 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_SSH_PORT || 22 }}
+          command_timeout: 30m
           script: |
             set -euo pipefail
             cd "${{ secrets.EC2_APP_DIR }}"
-            bash deploy/remote-deploy.sh
+            git fetch origin main
+            git show '${{ github.sha }}:deploy/remote-deploy.sh' | DEPLOY_REVISION='${{ github.sha }}' bash

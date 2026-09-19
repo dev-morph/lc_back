@@ -15,98 +15,98 @@ import java.time.LocalDateTime;
 @Table(name = "meeting_event")
 public class MeetingEvent extends BaseTimeEntity {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-	@Column(nullable = false, length = 120)
-	private String title;
+  @Column(nullable = false, length = 120)
+  private String title;
 
-	@Column(nullable = false, columnDefinition = "longtext")
-	private String description;
+  @Column(nullable = false, columnDefinition = "longtext")
+  private String description;
 
-	@Column(nullable = false, length = 512)
-	private String imageUrl;
+  @Column(nullable = false, length = 512)
+  private String imageUrl;
 
-	@Column(nullable = false)
-	private LocalDateTime eventDateTime;
+  @Column(nullable = false)
+  // Preserve Seoul wall-clock fields independently of the UTC configuration for actual Instants.
+  @org.hibernate.annotations.JdbcType(com.oao.backend.common.WallClockDateTimeJdbcType.class)
+  private LocalDateTime eventDateTime;
 
-	@Column(nullable = false)
-	private Integer priceAmount;
+  @Column(nullable = false)
+  private Integer priceAmount;
 
-	@Column(nullable = false)
-	private Integer capacity;
+  @Column(nullable = false)
+  private Integer capacity;
 
-	@Enumerated(EnumType.STRING)
-	@Column(nullable = false, length = 32)
-	private MeetingEventStatus status = MeetingEventStatus.OPEN;
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 32)
+  private MeetingEventStatus status = MeetingEventStatus.OPEN;
 
-	private Long createdByAdminId;
+  private Long createdByAdminId;
 
-	protected MeetingEvent() {
-	}
+  protected MeetingEvent() {}
 
-	public static MeetingEvent create(
-		String title,
-		String description,
-		String imageUrl,
-		LocalDateTime eventDateTime,
-		Integer priceAmount,
-		Integer capacity,
-		Long createdByAdminId
-	) {
-		MeetingEvent event = new MeetingEvent();
-		event.title = title;
-		event.description = description;
-		event.imageUrl = imageUrl;
-		event.eventDateTime = eventDateTime;
-		event.priceAmount = priceAmount;
-		event.capacity = capacity;
-		event.createdByAdminId = createdByAdminId;
-		event.status = MeetingEventStatus.OPEN;
-		return event;
-	}
+  public static MeetingEvent create(
+      String title,
+      String description,
+      String imageUrl,
+      LocalDateTime eventDateTime,
+      Integer priceAmount,
+      Integer capacity,
+      Long createdByAdminId) {
+    MeetingEvent event = new MeetingEvent();
+    event.title = title;
+    event.description = description;
+    event.imageUrl = imageUrl;
+    event.eventDateTime = eventDateTime;
+    event.priceAmount = priceAmount;
+    event.capacity = capacity;
+    event.createdByAdminId = createdByAdminId;
+    event.status = MeetingEventStatus.OPEN;
+    return event;
+  }
 
-	public Long getId() {
-		return id;
-	}
+  public Long getId() {
+    return id;
+  }
 
-	public String getTitle() {
-		return title;
-	}
+  public String getTitle() {
+    return title;
+  }
 
-	public String getDescription() {
-		return description;
-	}
+  public String getDescription() {
+    return description;
+  }
 
-	public String getImageUrl() {
-		return imageUrl;
-	}
+  public String getImageUrl() {
+    return imageUrl;
+  }
 
-	public LocalDateTime getEventDateTime() {
-		return eventDateTime;
-	}
+  public LocalDateTime getEventDateTime() {
+    return eventDateTime;
+  }
 
-	public Integer getPriceAmount() {
-		return priceAmount;
-	}
+  public Integer getPriceAmount() {
+    return priceAmount;
+  }
 
-	public Integer getCapacity() {
-		return capacity;
-	}
+  public Integer getCapacity() {
+    return capacity;
+  }
 
-	public MeetingEventStatus getStatus() {
-		return status;
-	}
+  public MeetingEventStatus getStatus() {
+    return status;
+  }
 
-	public Long getCreatedByAdminId() {
-		return createdByAdminId;
-	}
+  public Long getCreatedByAdminId() {
+    return createdByAdminId;
+  }
 
-	public enum MeetingEventStatus {
-		DRAFT,
-		OPEN,
-		CLOSED,
-		CANCELLED
-	}
+  public enum MeetingEventStatus {
+    DRAFT,
+    OPEN,
+    CLOSED,
+    CANCELLED
+  }
 }

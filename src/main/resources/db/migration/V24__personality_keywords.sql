@@ -1,0 +1,1 @@
+insert into personality_keyword(name) values ('다정한'),('솔직한'),('차분한'),('활동적인'),('성실한'),('유머러스한'),('배려하는'),('독립적인'),('낙천적인'),('책임감 있는'),('호기심 많은'),('대화를 좋아하는') on duplicate key update name=values(name);

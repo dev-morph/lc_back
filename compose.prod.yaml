@@ -31,6 +31,19 @@ services:
       KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI}
       OAUTH_SUCCESS_REDIRECT_URL: ${OAUTH_SUCCESS_REDIRECT_URL}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      AWS_SES_REGION: ${AWS_SES_REGION:-ap-northeast-2}
+      EMAIL_FROM: ${EMAIL_FROM:-LoveCatcher <hello@oao365.com>}
+      APP_FRONTEND_URL: ${APP_FRONTEND_URL:-https://www.oao365.com}
+      TOSS_PAYMENTS_CLIENT_KEY: ${TOSS_PAYMENTS_CLIENT_KEY:-}
+      TOSS_PAYMENTS_SECRET_KEY: ${TOSS_PAYMENTS_SECRET_KEY:-}
+      ALIMTALK_ENABLED: ${ALIMTALK_ENABLED:-false}
+      ALIMTALK_PF_ID: ${ALIMTALK_PF_ID:-}
+      ALIMTALK_MATCH_TEMPLATE_ID: ${ALIMTALK_MATCH_TEMPLATE_ID:-}
+      ALIMTALK_EXPRESS_TEMPLATE_ID: ${ALIMTALK_EXPRESS_TEMPLATE_ID:-}
+      ALIMTALK_COMPLETED_TEMPLATE_ID: ${ALIMTALK_COMPLETED_TEMPLATE_ID:-}
+      OAO_ADMIN_BOOTSTRAP_EMAIL: ${OAO_ADMIN_BOOTSTRAP_EMAIL:-}
+      OAO_ADMIN_BOOTSTRAP_PASSWORD: ${OAO_ADMIN_BOOTSTRAP_PASSWORD:-}
+      OAO_ADMIN_BOOTSTRAP_NAME: ${OAO_ADMIN_BOOTSTRAP_NAME:-관리자}
       VERIFICATION_MESSAGE_PROVIDER: ${VERIFICATION_MESSAGE_PROVIDER:-solapi-sms}
       SOLAPI_API_KEY: ${SOLAPI_API_KEY}
       SOLAPI_API_SECRET: ${SOLAPI_API_SECRET}
@@ -40,6 +53,7 @@ services:
       UPLOAD_ROOT_DIR: /app/uploads
     volumes:
       - app_uploads:/app/uploads
+      - app_private_verification:/app/private-verification
 
   mariadb:
     image: mariadb:11
@@ -59,6 +73,7 @@ services:
 
 volumes:
   app_uploads:
+  app_private_verification:
   caddy_config:
   caddy_data:
   mariadb_data:

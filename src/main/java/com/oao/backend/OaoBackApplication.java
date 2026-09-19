@@ -1,5 +1,6 @@
 package com.oao.backend;
 
+import com.oao.backend.config.AdminBootstrapProperties;
 import com.oao.backend.config.DevToolsProperties;
 import com.oao.backend.config.UploadProperties;
 import org.springframework.boot.SpringApplication;
@@ -9,11 +10,14 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @EnableScheduling
 @SpringBootApplication
-@EnableConfigurationProperties({UploadProperties.class, DevToolsProperties.class})
+@EnableConfigurationProperties({
+  UploadProperties.class,
+  DevToolsProperties.class,
+  AdminBootstrapProperties.class
+})
 public class OaoBackApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(OaoBackApplication.class, args);
-	}
-
+  public static void main(String[] args) {
+    SpringApplication.run(OaoBackApplication.class, args);
+  }
 }

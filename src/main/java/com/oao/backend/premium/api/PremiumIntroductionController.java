@@ -10,7 +10,6 @@ import jakarta.validation.constraints.Min;
 import java.util.List;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,50 +17,51 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/premium-introductions")
 public class PremiumIntroductionController {
 
-	private final PremiumIntroductionService premiumIntroductionService;
+  private final PremiumIntroductionService premiumIntroductionService;
 
-	public PremiumIntroductionController(PremiumIntroductionService premiumIntroductionService) {
-		this.premiumIntroductionService = premiumIntroductionService;
-	}
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.oao.backend.auth.CurrentUser current;
 
-	@PostMapping
-	ApiResponse<PremiumIntroductionResponse> create(
-		@RequestHeader("X-User-Id") Long userId,
-		@Valid @RequestBody CreatePremiumIntroductionRequest request
-	) {
-		PremiumIntroRequest premiumRequest = premiumIntroductionService.create(userId, request.toCommand());
-		return ApiResponse.ok(new PremiumIntroductionResponse(premiumRequest.getId()));
-	}
+  public PremiumIntroductionController(PremiumIntroductionService premiumIntroductionService) {
+    this.premiumIntroductionService = premiumIntroductionService;
+  }
 
-	record CreatePremiumIntroductionRequest(
-		Integer minAge,
-		Integer maxAge,
-		Integer minHeightCm,
-		Integer maxHeightCm,
-		@Min(0) @Max(100) Integer appearanceWeight,
-		@Min(0) @Max(100) Integer specWeight,
-		String appearancePreferenceText,
-		String preferredJobGroups,
-		String importantPointText,
-		List<Long> keywordIds
-	) {
+  @PostMapping
+  ApiResponse<PremiumIntroductionResponse> create(
+      jakarta.servlet.http.HttpServletRequest servletRequest,
+      @Valid @RequestBody CreatePremiumIntroductionRequest request) {
+    PremiumIntroRequest premiumRequest =
+        premiumIntroductionService.create(current.require(servletRequest), request.toCommand());
+    return ApiResponse.ok(new PremiumIntroductionResponse(premiumRequest.getId()));
+  }
 
-		CreatePremiumIntroductionCommand toCommand() {
-			return new CreatePremiumIntroductionCommand(
-				minAge,
-				maxAge,
-				minHeightCm,
-				maxHeightCm,
-				appearanceWeight,
-				specWeight,
-				appearancePreferenceText,
-				preferredJobGroups,
-				importantPointText,
-				keywordIds == null ? List.of() : keywordIds
-			);
-		}
-	}
+  record CreatePremiumIntroductionRequest(
+      @jakarta.validation.constraints.NotNull @Min(19) @Max(99) Integer minAge,
+      @jakarta.validation.constraints.NotNull @Min(19) @Max(99) Integer maxAge,
+      @jakarta.validation.constraints.NotNull @Min(120) @Max(230) Integer minHeightCm,
+      @jakarta.validation.constraints.NotNull @Min(120) @Max(230) Integer maxHeightCm,
+      @Min(0) @Max(100) Integer appearanceWeight,
+      @Min(0) @Max(100) Integer specWeight,
+      @jakarta.validation.constraints.Size(max = 2000) String appearancePreferenceText,
+      @jakarta.validation.constraints.Size(max = 1000) String preferredJobGroups,
+      @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 2000)
+          String importantPointText,
+      List<Long> keywordIds) {
 
-	record PremiumIntroductionResponse(Long requestId) {
-	}
+    CreatePremiumIntroductionCommand toCommand() {
+      return new CreatePremiumIntroductionCommand(
+          minAge,
+          maxAge,
+          minHeightCm,
+          maxHeightCm,
+          appearanceWeight,
+          specWeight,
+          appearancePreferenceText,
+          preferredJobGroups,
+          importantPointText,
+          keywordIds == null ? List.of() : keywordIds);
+    }
+  }
+
+  record PremiumIntroductionResponse(Long requestId) {}
 }

@@ -6,14 +6,17 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(name = "oao.verification.message.provider", havingValue = "mock", matchIfMissing = true)
+@ConditionalOnProperty(
+    name = "oao.verification.message.provider",
+    havingValue = "mock",
+    matchIfMissing = true)
 public class MockAlimtalkVerificationSender implements VerificationMessageSender {
 
-	private static final Logger log = LoggerFactory.getLogger(MockAlimtalkVerificationSender.class);
+  private static final Logger log = LoggerFactory.getLogger(MockAlimtalkVerificationSender.class);
 
-	@Override
-	public SendResult send(String phoneNumber, String code) {
-		log.info("[MOCK_ALIMTALK] phone verification code sent. phone={}, code={}", phoneNumber, code);
-		return new SendResult(false, null, "Mock Alimtalk sender skipped external delivery.");
-	}
+  @Override
+  public SendResult send(String phoneNumber, String code) {
+    log.debug("Mock phone verification skipped external delivery.");
+    return new SendResult(false, null, "Mock Alimtalk sender skipped external delivery.");
+  }
 }

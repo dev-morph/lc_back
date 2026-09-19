@@ -1,5 +1,9 @@
 .gradle
 build
 .env
+.env.*
+.git
+backups
+private-verification
 uploads
 compose.yaml

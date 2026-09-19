@@ -16,70 +16,73 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class HeartPurchaseService {
+  private final com.oao.backend.common.UserLocks userLocks;
 
-	private static final String ACTIVE_STATUS = "ACTIVE";
-	private static final String MOCK_PURCHASE_REFERENCE = "HEART_PURCHASE_MOCK";
+  private static final String ACTIVE_STATUS = "ACTIVE";
+  private static final String MOCK_PURCHASE_REFERENCE = "HEART_PURCHASE_MOCK";
 
-	private final HeartProductRepository heartProductRepository;
-	private final HeartWalletRepository heartWalletRepository;
-	private final HeartTransactionRepository heartTransactionRepository;
-	private final PaymentTransactionRepository paymentTransactionRepository;
+  private final HeartProductRepository heartProductRepository;
+  private final HeartWalletRepository heartWalletRepository;
+  private final HeartTransactionRepository heartTransactionRepository;
+  private final PaymentTransactionRepository paymentTransactionRepository;
 
-	public HeartPurchaseService(
-		HeartProductRepository heartProductRepository,
-		HeartWalletRepository heartWalletRepository,
-		HeartTransactionRepository heartTransactionRepository,
-		PaymentTransactionRepository paymentTransactionRepository
-	) {
-		this.heartProductRepository = heartProductRepository;
-		this.heartWalletRepository = heartWalletRepository;
-		this.heartTransactionRepository = heartTransactionRepository;
-		this.paymentTransactionRepository = paymentTransactionRepository;
-	}
+  public HeartPurchaseService(
+      com.oao.backend.common.UserLocks userLocks,
+      HeartProductRepository heartProductRepository,
+      HeartWalletRepository heartWalletRepository,
+      HeartTransactionRepository heartTransactionRepository,
+      PaymentTransactionRepository paymentTransactionRepository) {
+    this.userLocks = userLocks;
+    this.heartProductRepository = heartProductRepository;
+    this.heartWalletRepository = heartWalletRepository;
+    this.heartTransactionRepository = heartTransactionRepository;
+    this.paymentTransactionRepository = paymentTransactionRepository;
+  }
 
-	@Transactional
-	public HeartPurchaseResult purchaseMock(Long userId, Long heartProductId) {
-		HeartProduct product = heartProductRepository.findById(heartProductId)
-			.filter(foundProduct -> ACTIVE_STATUS.equals(foundProduct.getStatus()))
-			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Heart product not found."));
+  @Transactional
+  public HeartPurchaseResult purchaseMock(Long userId, Long heartProductId) {
+    userLocks.lock(userId);
+    HeartProduct product =
+        heartProductRepository
+            .findById(heartProductId)
+            .filter(foundProduct -> ACTIVE_STATUS.equals(foundProduct.getStatus()))
+            .orElseThrow(
+                () -> new BusinessException(HttpStatus.NOT_FOUND, "Heart product not found."));
 
-		PaymentTransaction payment = paymentTransactionRepository.save(PaymentTransaction.mockApproved(
-			userId,
-			product.getId(),
-			product.getPrice(),
-			"mock-" + UUID.randomUUID()
-		));
+    PaymentTransaction payment =
+        paymentTransactionRepository.save(
+            PaymentTransaction.mockApproved(
+                userId, product.getId(), product.getPrice(), "mock-" + UUID.randomUUID()));
 
-		HeartWallet wallet = heartWalletRepository.findByUserId(userId)
-			.orElseGet(() -> heartWalletRepository.save(HeartWallet.create(userId)));
-		wallet.charge(product.getHeartAmount());
-		heartTransactionRepository.save(HeartTransaction.charge(
-			userId,
-			product.getHeartAmount(),
-			wallet.getBalance(),
-			MOCK_PURCHASE_REFERENCE,
-			payment.getId()
-		));
+    HeartWallet wallet =
+        heartWalletRepository
+            .findByUserId(userId)
+            .orElseGet(() -> heartWalletRepository.save(HeartWallet.create(userId)));
+    wallet.charge(product.getHeartAmount());
+    heartTransactionRepository.save(
+        HeartTransaction.charge(
+            userId,
+            product.getHeartAmount(),
+            wallet.getBalance(),
+            MOCK_PURCHASE_REFERENCE,
+            payment.getId()));
 
-		return new HeartPurchaseResult(
-			userId,
-			product.getId(),
-			product.getHeartAmount(),
-			product.getPrice().longValue(),
-			wallet.getBalance(),
-			payment.getId(),
-			payment.getProvider()
-		);
-	}
+    return new HeartPurchaseResult(
+        userId,
+        product.getId(),
+        product.getHeartAmount(),
+        product.getPrice().longValue(),
+        wallet.getBalance(),
+        payment.getId(),
+        payment.getProvider());
+  }
 
-	public record HeartPurchaseResult(
-		Long userId,
-		Long heartProductId,
-		int chargedHearts,
-		long paidAmount,
-		int balance,
-		Long paymentTransactionId,
-		String provider
-	) {
-	}
+  public record HeartPurchaseResult(
+      Long userId,
+      Long heartProductId,
+      int chargedHearts,
+      long paidAmount,
+      int balance,
+      Long paymentTransactionId,
+      String provider) {}
 }

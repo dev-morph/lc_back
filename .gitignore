@@ -9,6 +9,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.prod.example
 
 ### Uploaded files ###
 uploads/
@@ -51,3 +52,7 @@ out/
 ### Logs ###
 *.log
 logs/
+
+# Private verification files (never publish or commit)
+private-verification/
+backups/

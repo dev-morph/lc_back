@@ -6,45 +6,84 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 
 @Entity
 @Table(name = "admin_user")
 public class AdminUser extends BaseTimeEntity {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+  private static final String ACTIVE_STATUS = "ACTIVE";
 
-	private Long userId;
-	private String email;
-	private String name;
-	private String role;
-	private String status;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-	protected AdminUser() {
-	}
+  private Long userId;
+  private String email;
+  private String name;
+  private String role;
+  private String status;
+  private String passwordHash;
+  private Instant lastLoginAt;
 
-	public Long getId() {
-		return id;
-	}
+  protected AdminUser() {}
 
-	public Long getUserId() {
-		return userId;
-	}
+  public static AdminUser createEmailAdmin(
+      String email, String name, String role, String passwordHash) {
+    AdminUser adminUser = new AdminUser();
+    adminUser.email = email;
+    adminUser.name = name;
+    adminUser.role = role;
+    adminUser.status = ACTIVE_STATUS;
+    adminUser.passwordHash = passwordHash;
+    return adminUser;
+  }
 
-	public String getEmail() {
-		return email;
-	}
+  public void updateEmailLogin(String email, String name, String role, String passwordHash) {
+    this.email = email;
+    this.name = name;
+    this.role = role;
+    this.status = ACTIVE_STATUS;
+    this.passwordHash = passwordHash;
+  }
 
-	public String getName() {
-		return name;
-	}
+  public void recordLogin() {
+    this.lastLoginAt = Instant.now();
+  }
 
-	public String getRole() {
-		return role;
-	}
+  public boolean isActive() {
+    return ACTIVE_STATUS.equals(status);
+  }
 
-	public String getStatus() {
-		return status;
-	}
+  public Long getId() {
+    return id;
+  }
+
+  public Long getUserId() {
+    return userId;
+  }
+
+  public String getEmail() {
+    return email;
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public String getRole() {
+    return role;
+  }
+
+  public String getStatus() {
+    return status;
+  }
+
+  public String getPasswordHash() {
+    return passwordHash;
+  }
+
+  public Instant getLastLoginAt() {
+    return lastLoginAt;
+  }
 }

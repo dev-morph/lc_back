@@ -11,8 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Locale;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -23,244 +23,303 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class ProfileIntroPhotoService {
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.oao.backend.common.StoredFileCleanup cleanup;
 
-	private static final int MIN_INTRO_LENGTH = 10;
-	private static final int MAX_INTRO_LENGTH = 300;
-	public static final int MIN_PHOTO_COUNT = 2;
-	private static final int MAX_PHOTO_COUNT = 6;
-	private static final long MAX_PHOTO_SIZE_BYTES = 5L * 1024L * 1024L;
-	private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
+  @org.springframework.beans.factory.annotation.Autowired
+  private org.springframework.jdbc.core.JdbcTemplate workflowDb;
 
-	private final MatchingProfileRepository matchingProfileRepository;
-	private final ProfilePhotoRepository profilePhotoRepository;
-	private final UploadProperties uploadProperties;
+  private static final int MIN_INTRO_LENGTH = 10;
+  private static final int MAX_INTRO_LENGTH = 300;
+  public static final int MIN_PHOTO_COUNT = 2;
+  private static final int MAX_PHOTO_COUNT = 6;
+  private static final long MAX_PHOTO_SIZE_BYTES = 5L * 1024L * 1024L;
+  private static final Set<String> ALLOWED_CONTENT_TYPES =
+      Set.of("image/jpeg", "image/png", "image/webp");
 
-	public ProfileIntroPhotoService(
-		MatchingProfileRepository matchingProfileRepository,
-		ProfilePhotoRepository profilePhotoRepository,
-		UploadProperties uploadProperties
-	) {
-		this.matchingProfileRepository = matchingProfileRepository;
-		this.profilePhotoRepository = profilePhotoRepository;
-		this.uploadProperties = uploadProperties;
-	}
+  private final MatchingProfileRepository matchingProfileRepository;
+  private final ProfilePhotoRepository profilePhotoRepository;
+  private final UploadProperties uploadProperties;
 
-	@Transactional(readOnly = true)
-	public IntroPhotoView findIntroPhoto(Long userId) {
-		MatchingProfile matchingProfile = matchingProfileRepository.findByUserId(userId).orElse(null);
-		List<ProfilePhoto> photos = profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
-		String intro = matchingProfile == null ? null : matchingProfile.getJobIntro();
-		String photoUrl = primaryPhotoUrl(photos);
-		return new IntroPhotoView(intro, photoUrl, toPhotoViews(photos), isCompleted(intro, photos));
-	}
+  public ProfileIntroPhotoService(
+      MatchingProfileRepository matchingProfileRepository,
+      ProfilePhotoRepository profilePhotoRepository,
+      UploadProperties uploadProperties) {
+    this.matchingProfileRepository = matchingProfileRepository;
+    this.profilePhotoRepository = profilePhotoRepository;
+    this.uploadProperties = uploadProperties;
+  }
 
-	@Transactional
-	public IntroPhotoView saveIntroPhoto(Long userId, String intro, MultipartFile photo) {
-		return saveIntroPhoto(userId, intro, null, photo);
-	}
+  @Transactional(readOnly = true)
+  public IntroPhotoView findIntroPhoto(Long userId) {
+    MatchingProfile matchingProfile = matchingProfileRepository.findByUserId(userId).orElse(null);
+    List<ProfilePhoto> photos =
+        profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
+    String intro = matchingProfile == null ? null : matchingProfile.getJobIntro();
+    String photoUrl = primaryPhotoUrl(photos);
+    return new IntroPhotoView(intro, photoUrl, toPhotoViews(photos), isCompleted(intro, photos));
+  }
 
-	@Transactional
-	public IntroPhotoView saveIntroPhoto(Long userId, String intro, List<MultipartFile> photos, MultipartFile legacyPhoto) {
-		String normalizedIntro = normalizeIntro(intro);
-		List<ProfilePhoto> existingPhotos = profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
-		List<MultipartFile> newPhotos = normalizePhotos(photos);
-		List<String> oldPhotoUrlsToDelete = new ArrayList<>();
+  @Transactional
+  public IntroPhotoView saveIntroPhoto(Long userId, String intro, MultipartFile photo) {
+    return saveIntroPhoto(userId, intro, null, photo);
+  }
 
-		MatchingProfile matchingProfile = matchingProfileRepository.findByUserId(userId)
-			.orElseGet(() -> matchingProfileRepository.save(MatchingProfile.create(userId)));
-		matchingProfile.updateIntro(normalizedIntro);
+  @Transactional
+  public IntroPhotoView saveIntroPhoto(
+      Long userId, String intro, List<MultipartFile> photos, MultipartFile legacyPhoto) {
+    String normalizedIntro = normalizeIntro(intro);
+    List<ProfilePhoto> existingPhotos =
+        profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
+    List<MultipartFile> newPhotos = normalizePhotos(photos);
+    List<String> oldPhotoUrlsToDelete = new ArrayList<>();
 
-		if (!newPhotos.isEmpty()) {
-			validateMinimumPhotoCount(newPhotos.size());
-			existingPhotos.stream()
-				.map(ProfilePhoto::getImageUrl)
-				.forEach(oldPhotoUrlsToDelete::add);
-			replacePhotoSet(userId, existingPhotos, newPhotos);
-		} else if (hasNewPhoto(legacyPhoto)) {
-			if (existingPhotos.size() < MIN_PHOTO_COUNT) {
-				throw new BusinessException(HttpStatus.BAD_REQUEST, minimumPhotoMessage());
-			}
-			replacePrimaryPhoto(userId, existingPhotos, legacyPhoto, oldPhotoUrlsToDelete);
-		} else if (existingPhotos.size() < MIN_PHOTO_COUNT) {
-			throw new BusinessException(HttpStatus.BAD_REQUEST, minimumPhotoMessage());
-		}
+    MatchingProfile matchingProfile =
+        matchingProfileRepository
+            .findByUserId(userId)
+            .orElseGet(() -> matchingProfileRepository.save(MatchingProfile.create(userId)));
+    matchingProfile.updateIntro(normalizedIntro);
 
-		deleteProfilePhotoFiles(oldPhotoUrlsToDelete);
-		List<ProfilePhoto> savedPhotos = profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
-		String primaryPhotoUrl = primaryPhotoUrl(savedPhotos);
-		return new IntroPhotoView(normalizedIntro, primaryPhotoUrl, toPhotoViews(savedPhotos), isCompleted(normalizedIntro, savedPhotos));
-	}
+    if (!newPhotos.isEmpty()) {
+      validateMinimumPhotoCount(newPhotos.size());
+      existingPhotos.stream().map(ProfilePhoto::getImageUrl).forEach(oldPhotoUrlsToDelete::add);
+      replacePhotoSet(userId, existingPhotos, newPhotos);
+    } else if (hasNewPhoto(legacyPhoto)) {
+      if (existingPhotos.size() < MIN_PHOTO_COUNT) {
+        throw new BusinessException(HttpStatus.BAD_REQUEST, minimumPhotoMessage());
+      }
+      replacePrimaryPhoto(userId, existingPhotos, legacyPhoto, oldPhotoUrlsToDelete);
+    } else if (existingPhotos.size() < MIN_PHOTO_COUNT) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, minimumPhotoMessage());
+    }
 
-	private boolean hasNewPhoto(MultipartFile photo) {
-		return photo != null && !photo.isEmpty();
-	}
+    if (!newPhotos.isEmpty() || hasNewPhoto(legacyPhoto)) {
+      matchingProfile.pauseMatching();
+      workflowDb.update(
+          "update user_account set approval_status='PENDING',rejection_reason=null where id=? and"
+              + " approval_status='REJECTED'",
+          userId);
+    }
+    deleteProfilePhotoFiles(oldPhotoUrlsToDelete);
+    List<ProfilePhoto> savedPhotos =
+        profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
+    String primaryPhotoUrl = primaryPhotoUrl(savedPhotos);
+    return new IntroPhotoView(
+        normalizedIntro,
+        primaryPhotoUrl,
+        toPhotoViews(savedPhotos),
+        isCompleted(normalizedIntro, savedPhotos));
+  }
 
-	private List<MultipartFile> normalizePhotos(List<MultipartFile> photos) {
-		if (photos == null) {
-			return List.of();
-		}
-		List<MultipartFile> normalizedPhotos = photos.stream()
-			.filter(this::hasNewPhoto)
-			.toList();
-		if (normalizedPhotos.size() > MAX_PHOTO_COUNT) {
-			throw new BusinessException(HttpStatus.BAD_REQUEST, "Profile photos can be up to " + MAX_PHOTO_COUNT + ".");
-		}
-		return normalizedPhotos;
-	}
+  private boolean hasNewPhoto(MultipartFile photo) {
+    return photo != null && !photo.isEmpty();
+  }
 
-	private void validateMinimumPhotoCount(int photoCount) {
-		if (photoCount < MIN_PHOTO_COUNT) {
-			throw new BusinessException(HttpStatus.BAD_REQUEST, minimumPhotoMessage());
-		}
-	}
+  private List<MultipartFile> normalizePhotos(List<MultipartFile> photos) {
+    if (photos == null) {
+      return List.of();
+    }
+    List<MultipartFile> normalizedPhotos = photos.stream().filter(this::hasNewPhoto).toList();
+    if (normalizedPhotos.size() > MAX_PHOTO_COUNT) {
+      throw new BusinessException(
+          HttpStatus.BAD_REQUEST, "Profile photos can be up to " + MAX_PHOTO_COUNT + ".");
+    }
+    return normalizedPhotos;
+  }
 
-	private String minimumPhotoMessage() {
-		return "Profile photos must be at least " + MIN_PHOTO_COUNT + ".";
-	}
+  private void validateMinimumPhotoCount(int photoCount) {
+    if (photoCount < MIN_PHOTO_COUNT) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, minimumPhotoMessage());
+    }
+  }
 
-	private void replacePhotoSet(Long userId, List<ProfilePhoto> existingPhotos, List<MultipartFile> newPhotos) {
-		List<ProfilePhoto> nextPhotos = new ArrayList<>();
-		for (int index = 0; index < newPhotos.size(); index++) {
-			nextPhotos.add(ProfilePhoto.create(userId, storePhoto(userId, newPhotos.get(index)), index + 1));
-		}
+  private String minimumPhotoMessage() {
+    return "Profile photos must be at least " + MIN_PHOTO_COUNT + ".";
+  }
 
-		profilePhotoRepository.deleteAll(existingPhotos);
-		profilePhotoRepository.flush();
-		profilePhotoRepository.saveAll(nextPhotos);
-	}
+  private void replacePhotoSet(
+      Long userId, List<ProfilePhoto> existingPhotos, List<MultipartFile> newPhotos) {
+    List<ProfilePhoto> nextPhotos = new ArrayList<>();
+    for (int index = 0; index < newPhotos.size(); index++) {
+      nextPhotos.add(
+          ProfilePhoto.create(userId, storePhoto(userId, newPhotos.get(index)), index + 1));
+    }
 
-	private void replacePrimaryPhoto(
-		Long userId,
-		List<ProfilePhoto> existingPhotos,
-		MultipartFile legacyPhoto,
-		List<String> oldPhotoUrlsToDelete
-	) {
-		String imageUrl = storePhoto(userId, legacyPhoto);
-		ProfilePhoto existingPrimaryPhoto = existingPhotos.stream()
-			.min(Comparator.comparing(ProfilePhoto::getDisplayOrder).thenComparing(ProfilePhoto::getId))
-			.orElse(null);
+    profilePhotoRepository.deleteAll(existingPhotos);
+    profilePhotoRepository.flush();
+    profilePhotoRepository.saveAll(nextPhotos);
+  }
 
-		if (existingPrimaryPhoto == null) {
-			profilePhotoRepository.save(ProfilePhoto.create(userId, imageUrl, 1));
-			return;
-		}
+  private void replacePrimaryPhoto(
+      Long userId,
+      List<ProfilePhoto> existingPhotos,
+      MultipartFile legacyPhoto,
+      List<String> oldPhotoUrlsToDelete) {
+    String imageUrl = storePhoto(userId, legacyPhoto);
+    ProfilePhoto existingPrimaryPhoto =
+        existingPhotos.stream()
+            .min(
+                Comparator.comparing(ProfilePhoto::getDisplayOrder)
+                    .thenComparing(ProfilePhoto::getId))
+            .orElse(null);
 
-		oldPhotoUrlsToDelete.add(existingPrimaryPhoto.getImageUrl());
-		existingPrimaryPhoto.updateImageUrl(imageUrl);
-	}
+    if (existingPrimaryPhoto == null) {
+      profilePhotoRepository.save(ProfilePhoto.create(userId, imageUrl, 1));
+      return;
+    }
 
-	private String normalizeIntro(String intro) {
-		String normalizedIntro = intro == null ? "" : intro.trim();
-		if (normalizedIntro.length() < MIN_INTRO_LENGTH || normalizedIntro.length() > MAX_INTRO_LENGTH) {
-			throw new BusinessException(
-				HttpStatus.BAD_REQUEST,
-				"Intro must be between " + MIN_INTRO_LENGTH + " and " + MAX_INTRO_LENGTH + " characters."
-			);
-		}
-		return normalizedIntro;
-	}
+    oldPhotoUrlsToDelete.add(existingPrimaryPhoto.getImageUrl());
+    existingPrimaryPhoto.updateImageUrl(imageUrl);
+  }
 
-	private String storePhoto(Long userId, MultipartFile photo) {
-		if (photo == null || photo.isEmpty()) {
-			throw new BusinessException(HttpStatus.BAD_REQUEST, "Profile photo is required.");
-		}
-		if (photo.getSize() > MAX_PHOTO_SIZE_BYTES) {
-			throw new BusinessException(HttpStatus.BAD_REQUEST, "Profile photo must be 5MB or smaller.");
-		}
+  private String normalizeIntro(String intro) {
+    String normalizedIntro = intro == null ? "" : intro.trim();
+    if (normalizedIntro.length() < MIN_INTRO_LENGTH
+        || normalizedIntro.length() > MAX_INTRO_LENGTH) {
+      throw new BusinessException(
+          HttpStatus.BAD_REQUEST,
+          "Intro must be between "
+              + MIN_INTRO_LENGTH
+              + " and "
+              + MAX_INTRO_LENGTH
+              + " characters.");
+    }
+    return normalizedIntro;
+  }
 
-		String contentType = photo.getContentType();
-		if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
-			throw new BusinessException(HttpStatus.BAD_REQUEST, "Only jpeg, png, and webp images are allowed.");
-		}
+  private String storePhoto(Long userId, MultipartFile photo) {
+    if (photo == null || photo.isEmpty()) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, "Profile photo is required.");
+    }
+    if (photo.getSize() > MAX_PHOTO_SIZE_BYTES) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, "Profile photo must be 5MB or smaller.");
+    }
 
-		String extension = extension(contentType);
-		String fileName = UUID.randomUUID() + "." + extension;
-		Path userUploadDir = Path.of(uploadProperties.rootDir(), "profile-photos", String.valueOf(userId))
-			.toAbsolutePath()
-			.normalize();
-		Path uploadPath = userUploadDir.resolve(fileName);
+    String contentType = photo.getContentType();
+    if (contentType == null
+        || !ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
+      throw new BusinessException(
+          HttpStatus.BAD_REQUEST, "Only jpeg, png, and webp images are allowed.");
+    }
 
-		try {
-			Files.createDirectories(userUploadDir);
-			photo.transferTo(uploadPath);
-		} catch (IOException exception) {
-			throw new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "Profile photo could not be saved.");
-		}
+    try (var input = photo.getInputStream()) {
+      byte[] head = input.readNBytes(12);
+      boolean valid =
+          switch (contentType.toLowerCase(Locale.ROOT)) {
+            case "image/png" ->
+                head.length >= 8
+                    && java.util.Arrays.equals(
+                        java.util.Arrays.copyOf(head, 8),
+                        new byte[] {(byte) 137, 80, 78, 71, 13, 10, 26, 10});
+            case "image/jpeg" ->
+                head.length >= 3
+                    && head[0] == (byte) 255
+                    && head[1] == (byte) 216
+                    && head[2] == (byte) 255;
+            case "image/webp" ->
+                head.length >= 12
+                    && new String(head, 0, 4, java.nio.charset.StandardCharsets.US_ASCII)
+                        .equals("RIFF")
+                    && new String(head, 8, 4, java.nio.charset.StandardCharsets.US_ASCII)
+                        .equals("WEBP");
+            default -> false;
+          };
+      if (!valid) throw new BusinessException(HttpStatus.BAD_REQUEST, "올바른 이미지 파일을 선택해주세요.");
+    } catch (IOException e) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, "이미지를 읽을 수 없습니다.");
+    }
 
-		return trimTrailingSlash(uploadProperties.publicPath()) + "/profile-photos/" + userId + "/" + fileName;
-	}
+    String extension = extension(contentType);
+    String fileName = UUID.randomUUID() + "." + extension;
+    Path userUploadDir =
+        Path.of(uploadProperties.rootDir(), "profile-photos", String.valueOf(userId))
+            .toAbsolutePath()
+            .normalize();
+    Path uploadPath = userUploadDir.resolve(fileName);
 
-	private String extension(String contentType) {
-		return switch (contentType.toLowerCase(Locale.ROOT)) {
-			case "image/png" -> "png";
-			case "image/webp" -> "webp";
-			default -> "jpg";
-		};
-	}
+    try {
+      Files.createDirectories(userUploadDir);
+      photo.transferTo(uploadPath);
+      cleanup.removeOnRollback(uploadPath);
+    } catch (IOException exception) {
+      throw new BusinessException(
+          HttpStatus.INTERNAL_SERVER_ERROR, "Profile photo could not be saved.");
+    }
 
-	private boolean isCompleted(String intro, List<ProfilePhoto> photos) {
-		return intro != null
-			&& intro.trim().length() >= MIN_INTRO_LENGTH
-			&& photos.stream()
-				.filter(photo -> photo.getImageUrl() != null && !photo.getImageUrl().isBlank())
-				.count() >= MIN_PHOTO_COUNT;
-	}
+    return trimTrailingSlash(uploadProperties.publicPath())
+        + "/profile-photos/"
+        + userId
+        + "/"
+        + fileName;
+  }
 
-	private String primaryPhotoUrl(List<ProfilePhoto> photos) {
-		if (photos.isEmpty()) {
-			return null;
-		}
-		return photos.get(0).getImageUrl();
-	}
+  private String extension(String contentType) {
+    return switch (contentType.toLowerCase(Locale.ROOT)) {
+      case "image/png" -> "png";
+      case "image/webp" -> "webp";
+      default -> "jpg";
+    };
+  }
 
-	private List<ProfilePhotoView> toPhotoViews(List<ProfilePhoto> photos) {
-		return photos.stream()
-			.map(photo -> new ProfilePhotoView(photo.getImageUrl(), photo.getDisplayOrder()))
-			.toList();
-	}
+  private boolean isCompleted(String intro, List<ProfilePhoto> photos) {
+    return intro != null
+        && intro.trim().length() >= MIN_INTRO_LENGTH
+        && photos.stream()
+                .filter(photo -> photo.getImageUrl() != null && !photo.getImageUrl().isBlank())
+                .count()
+            >= MIN_PHOTO_COUNT;
+  }
 
-	private void deleteProfilePhotoFiles(List<String> photoUrls) {
-		for (String photoUrl : photoUrls) {
-			Optional<Path> uploadPath = resolveUploadPath(photoUrl);
-			if (uploadPath.isEmpty()) {
-				continue;
-			}
-			try {
-				Files.deleteIfExists(uploadPath.get());
-			} catch (IOException exception) {
-				// File cleanup failure should not block profile completion.
-			}
-		}
-	}
+  private String primaryPhotoUrl(List<ProfilePhoto> photos) {
+    if (photos.isEmpty()) {
+      return null;
+    }
+    return photos.get(0).getImageUrl();
+  }
 
-	private Optional<Path> resolveUploadPath(String imageUrl) {
-		if (imageUrl == null || imageUrl.isBlank()) {
-			return Optional.empty();
-		}
-		String publicPath = trimTrailingSlash(uploadProperties.publicPath());
-		if (!imageUrl.startsWith(publicPath + "/")) {
-			return Optional.empty();
-		}
+  private List<ProfilePhotoView> toPhotoViews(List<ProfilePhoto> photos) {
+    return photos.stream()
+        .map(photo -> new ProfilePhotoView(photo.getImageUrl(), photo.getDisplayOrder()))
+        .toList();
+  }
 
-		Path uploadRoot = Path.of(uploadProperties.rootDir()).toAbsolutePath().normalize();
-		String relativePath = imageUrl.substring(publicPath.length() + 1);
-		Path uploadPath = uploadRoot.resolve(relativePath).normalize();
-		if (!uploadPath.startsWith(uploadRoot)) {
-			return Optional.empty();
-		}
-		return Optional.of(uploadPath);
-	}
+  private void deleteProfilePhotoFiles(List<String> photoUrls) {
+    for (String photoUrl : photoUrls) {
+      Optional<Path> uploadPath = resolveUploadPath(photoUrl);
+      if (uploadPath.isEmpty()) {
+        continue;
+      }
+      cleanup.enqueue(uploadPath.get());
+    }
+  }
 
-	private String trimTrailingSlash(String value) {
-		if (value.endsWith("/")) {
-			return value.substring(0, value.length() - 1);
-		}
-		return value;
-	}
+  private Optional<Path> resolveUploadPath(String imageUrl) {
+    if (imageUrl == null || imageUrl.isBlank()) {
+      return Optional.empty();
+    }
+    String publicPath = trimTrailingSlash(uploadProperties.publicPath());
+    if (!imageUrl.startsWith(publicPath + "/")) {
+      return Optional.empty();
+    }
 
-	public record IntroPhotoView(String intro, String photoUrl, List<ProfilePhotoView> photos, boolean completed) {
-	}
+    Path uploadRoot = Path.of(uploadProperties.rootDir()).toAbsolutePath().normalize();
+    String relativePath = imageUrl.substring(publicPath.length() + 1);
+    Path uploadPath = uploadRoot.resolve(relativePath).normalize();
+    if (!uploadPath.startsWith(uploadRoot)) {
+      return Optional.empty();
+    }
+    return Optional.of(uploadPath);
+  }
 
-	public record ProfilePhotoView(String photoUrl, Integer displayOrder) {
-	}
+  private String trimTrailingSlash(String value) {
+    if (value.endsWith("/")) {
+      return value.substring(0, value.length() - 1);
+    }
+    return value;
+  }
+
+  public record IntroPhotoView(
+      String intro, String photoUrl, List<ProfilePhotoView> photos, boolean completed) {}
+
+  public record ProfilePhotoView(String photoUrl, Integer displayOrder) {}
 }

@@ -69,7 +69,9 @@ GitHub Actions behavior:
 - On `main` push, run `./gradlew test`.
 - If tests pass, SSH into EC2.
 - On EC2, fetch latest `main`, rebuild Docker images, and run Compose.
-- If MariaDB is already running, create a best-effort SQL backup in `backups/`.
+- Build the app, then require a non-empty SQL backup in `backups/` before replacing it. Backup failure stops deployment.
+- Deploy the tested commit only, refuse tracked server edits, and wait for the public health endpoint.
+- Preserve public uploads and private verification documents in separate named volumes.
 
 Add these GitHub repository secrets:
 
@@ -118,6 +120,16 @@ VERIFICATION_DEV_CODE_RESPONSE_ENABLED=false
 OAO_DEV_TOOLS_ENABLED=false
 OAO_DEV_TOOLS_SECRET=
 ```
+
+Amazon SES uses `AWS_SES_REGION=ap-northeast-2` and
+`EMAIL_FROM=LoveCatcher <hello@oao365.com>`. Attach the SES IAM role to EC2 and
+allow IMDSv2 access from the container (response hop limit 2). No static AWS key
+is required. Other optional integrations and administrator bootstrap variables
+are listed in `.env.prod.example` and passed through by Compose.
+
+Backups and actual `.env` files are ignored by Git and Docker build context.
+Before retrying a failed deployment, check the Actions logs and server app logs;
+do not restore a pre-migration database over live writes automatically.
 
 ## Kakao Developers
 

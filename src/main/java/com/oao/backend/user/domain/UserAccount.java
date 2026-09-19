@@ -16,118 +16,130 @@ import java.time.LocalDate;
 @Table(name = "user_account")
 public class UserAccount extends BaseTimeEntity {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-	@Column(length = 100)
-	private String name;
+  @Column(length = 100)
+  private String name;
 
-	@Enumerated(EnumType.STRING)
-	private UserStatus status = UserStatus.ACTIVE;
+  @Enumerated(EnumType.STRING)
+  private UserStatus status = UserStatus.ACTIVE;
 
-	@Enumerated(EnumType.STRING)
-	private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
+  @Enumerated(EnumType.STRING)
+  private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
 
-	@Enumerated(EnumType.STRING)
-	private MemberGrade grade;
+  @Enumerated(EnumType.STRING)
+  private MemberGrade grade;
 
-	@Enumerated(EnumType.STRING)
-	private Gender gender;
+  @Enumerated(EnumType.STRING)
+  private Gender gender;
 
-	private LocalDate birthDate;
-	private Instant approvedAt;
-	private Long approvedByAdminId;
-	private Instant deletedAt;
+  private LocalDate birthDate;
+  private Instant approvedAt;
+  private Long approvedByAdminId;
+  private Instant deletedAt;
+  private int authVersion;
+  private String rejectionReason;
 
-	protected UserAccount() {
-	}
+  public int getAuthVersion() {
+    return authVersion;
+  }
 
-	public static UserAccount createPending() {
-		return new UserAccount();
-	}
+  public String getRejectionReason() {
+    return rejectionReason;
+  }
 
-	public void approve(MemberGrade grade, Long adminId) {
-		this.approvalStatus = ApprovalStatus.APPROVED;
-		this.grade = grade;
-		this.approvedAt = Instant.now();
-		this.approvedByAdminId = adminId;
-	}
+  protected UserAccount() {}
 
-	public void reject() {
-		this.approvalStatus = ApprovalStatus.REJECTED;
-	}
+  public static UserAccount createPending() {
+    return new UserAccount();
+  }
 
-	public void changeGrade(MemberGrade grade) {
-		this.grade = grade;
-	}
+  public void approve(MemberGrade grade, Long adminId) {
+    this.approvalStatus = ApprovalStatus.APPROVED;
+    this.rejectionReason = null;
+    this.grade = grade;
+    this.approvedAt = Instant.now();
+    this.approvedByAdminId = adminId;
+  }
 
-	public void updateBasicInfo(String name, LocalDate birthDate) {
-		this.name = name;
-		this.birthDate = birthDate;
-	}
+  public void reject(String reason) {
+    this.approvalStatus = ApprovalStatus.REJECTED;
+    this.rejectionReason = reason;
+  }
 
-	public void updateGender(Gender gender) {
-		this.gender = gender;
-	}
+  public void changeGrade(MemberGrade grade) {
+    this.grade = grade;
+  }
 
-	public void suspend() {
-		this.status = UserStatus.SUSPENDED;
-	}
+  public void updateBasicInfo(String name, LocalDate birthDate) {
+    this.name = name;
+    this.birthDate = birthDate;
+  }
 
-	public void delete() {
-		this.status = UserStatus.DELETED;
-		this.deletedAt = Instant.now();
-	}
+  public void updateGender(Gender gender) {
+    this.gender = gender;
+  }
 
-	public Long getId() {
-		return id;
-	}
+  public void suspend() {
+    this.status = UserStatus.SUSPENDED;
+    this.authVersion++;
+  }
 
-	public String getName() {
-		return name;
-	}
+  public void delete() {
+    this.status = UserStatus.DELETED;
+    this.deletedAt = Instant.now();
+  }
 
-	public LocalDate getBirthDate() {
-		return birthDate;
-	}
+  public Long getId() {
+    return id;
+  }
 
-	public ApprovalStatus getApprovalStatus() {
-		return approvalStatus;
-	}
+  public String getName() {
+    return name;
+  }
 
-	public MemberGrade getGrade() {
-		return grade;
-	}
+  public LocalDate getBirthDate() {
+    return birthDate;
+  }
 
-	public Gender getGender() {
-		return gender;
-	}
+  public ApprovalStatus getApprovalStatus() {
+    return approvalStatus;
+  }
 
-	public UserStatus getStatus() {
-		return status;
-	}
+  public MemberGrade getGrade() {
+    return grade;
+  }
 
-	public enum UserStatus {
-		ACTIVE,
-		SUSPENDED,
-		DELETED
-	}
+  public Gender getGender() {
+    return gender;
+  }
 
-	public enum ApprovalStatus {
-		PENDING,
-		APPROVED,
-		REJECTED
-	}
+  public UserStatus getStatus() {
+    return status;
+  }
 
-	public enum MemberGrade {
-		S,
-		A,
-		B
-	}
+  public enum UserStatus {
+    ACTIVE,
+    SUSPENDED,
+    DELETED
+  }
 
-	public enum Gender {
-		MALE,
-		FEMALE
-	}
+  public enum ApprovalStatus {
+    PENDING,
+    APPROVED,
+    REJECTED
+  }
+
+  public enum MemberGrade {
+    S,
+    A,
+    B
+  }
+
+  public enum Gender {
+    MALE,
+    FEMALE
+  }
 }

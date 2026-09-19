@@ -6,8 +6,10 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ProfilePhotoRepository extends JpaRepository<ProfilePhoto, Long> {
+  java.util.Optional<ProfilePhoto> findFirstByUserIdAndReviewStatusOrderByDisplayOrderAscIdAsc(
+      Long userId, com.oao.backend.user.domain.UserVerificationDocument.ReviewStatus status);
 
-	Optional<ProfilePhoto> findFirstByUserIdOrderByDisplayOrderAscIdAsc(Long userId);
+  Optional<ProfilePhoto> findFirstByUserIdOrderByDisplayOrderAscIdAsc(Long userId);
 
-	List<ProfilePhoto> findByUserIdOrderByDisplayOrderAscIdAsc(Long userId);
+  List<ProfilePhoto> findByUserIdOrderByDisplayOrderAscIdAsc(Long userId);
 }

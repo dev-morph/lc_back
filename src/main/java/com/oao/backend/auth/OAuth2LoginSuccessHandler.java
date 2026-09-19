@@ -13,31 +13,34 @@ import org.springframework.web.util.UriComponentsBuilder;
 @Component
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
-	private final String successRedirectUrl;
+  private final String successRedirectUrl;
 
-	public OAuth2LoginSuccessHandler(
-		@Value("${oao.auth.oauth-success-redirect-url}") String successRedirectUrl
-	) {
-		this.successRedirectUrl = successRedirectUrl;
-	}
+  public OAuth2LoginSuccessHandler(
+      @Value("${oao.auth.oauth-success-redirect-url}") String successRedirectUrl) {
+    this.successRedirectUrl = successRedirectUrl;
+  }
 
-	@Override
-	public void onAuthenticationSuccess(
-		HttpServletRequest request,
-		HttpServletResponse response,
-		Authentication authentication
-	) throws IOException, ServletException {
-		Object principal = authentication.getPrincipal();
-		if (!(principal instanceof KakaoPrincipal kakaoPrincipal)) {
-			response.sendRedirect(successRedirectUrl);
-			return;
-		}
+  @Override
+  public void onAuthenticationSuccess(
+      HttpServletRequest request, HttpServletResponse response, Authentication authentication)
+      throws IOException, ServletException {
+    Object principal = authentication.getPrincipal();
+    if (!(principal instanceof KakaoPrincipal kakaoPrincipal)) {
+      response.sendRedirect(successRedirectUrl);
+      return;
+    }
 
-		String redirectUrl = UriComponentsBuilder.fromUriString(successRedirectUrl)
-			.queryParam("userId", kakaoPrincipal.getUserId())
-			.queryParam("approvalStatus", kakaoPrincipal.getApprovalStatus().name())
-			.build()
-			.toUriString();
-		response.sendRedirect(redirectUrl);
-	}
+    boolean linked =
+        request.getSession(false) != null
+            && Boolean.TRUE.equals(request.getSession(false).getAttribute("KAKAO_LINK_COMPLETED"));
+    if (linked) request.getSession(false).removeAttribute("KAKAO_LINK_COMPLETED");
+    String redirectUrl =
+        UriComponentsBuilder.fromUriString(successRedirectUrl)
+            .queryParam("linked", linked)
+            .queryParam("userId", kakaoPrincipal.getUserId())
+            .queryParam("approvalStatus", kakaoPrincipal.getApprovalStatus().name())
+            .build()
+            .toUriString();
+    response.sendRedirect(redirectUrl);
+  }
 }

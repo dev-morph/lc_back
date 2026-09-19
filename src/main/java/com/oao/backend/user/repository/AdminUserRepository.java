@@ -6,7 +6,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AdminUserRepository extends JpaRepository<AdminUser, Long> {
 
-	Optional<AdminUser> findByUserIdAndStatus(Long userId, String status);
+  Optional<AdminUser> findByEmailIgnoreCase(String email);
 
-	boolean existsByUserId(Long userId);
+  Optional<AdminUser> findByIdAndStatus(Long id, String status);
+
+  Optional<AdminUser> findByUserIdAndStatus(Long userId, String status);
+
+  boolean existsByUserId(Long userId);
 }

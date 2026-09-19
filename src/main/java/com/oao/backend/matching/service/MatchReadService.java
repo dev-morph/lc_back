@@ -33,236 +33,253 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MatchReadService {
+  private final com.oao.backend.matching.service.MatchingPolicyService matchingPolicy;
 
-	private final MatchProposalRepository matchProposalRepository;
-	private final UserAccountRepository userAccountRepository;
-	private final UserProfileRepository userProfileRepository;
-	private final MatchingProfileRepository matchingProfileRepository;
-	private final ProfilePhotoRepository profilePhotoRepository;
-	private final UserHobbyRepository userHobbyRepository;
-	private final HobbyRepository hobbyRepository;
-	private final UserInterestRepository userInterestRepository;
+  private final MatchProposalRepository matchProposalRepository;
+  private final UserAccountRepository userAccountRepository;
+  private final UserProfileRepository userProfileRepository;
+  private final MatchingProfileRepository matchingProfileRepository;
+  private final ProfilePhotoRepository profilePhotoRepository;
+  private final UserHobbyRepository userHobbyRepository;
+  private final HobbyRepository hobbyRepository;
+  private final UserInterestRepository userInterestRepository;
 
-	public MatchReadService(
-		MatchProposalRepository matchProposalRepository,
-		UserAccountRepository userAccountRepository,
-		UserProfileRepository userProfileRepository,
-		MatchingProfileRepository matchingProfileRepository,
-		ProfilePhotoRepository profilePhotoRepository,
-		UserHobbyRepository userHobbyRepository,
-		HobbyRepository hobbyRepository,
-		UserInterestRepository userInterestRepository
-	) {
-		this.matchProposalRepository = matchProposalRepository;
-		this.userAccountRepository = userAccountRepository;
-		this.userProfileRepository = userProfileRepository;
-		this.matchingProfileRepository = matchingProfileRepository;
-		this.profilePhotoRepository = profilePhotoRepository;
-		this.userHobbyRepository = userHobbyRepository;
-		this.hobbyRepository = hobbyRepository;
-		this.userInterestRepository = userInterestRepository;
-	}
+  public MatchReadService(
+      com.oao.backend.matching.service.MatchingPolicyService matchingPolicy,
+      MatchProposalRepository matchProposalRepository,
+      UserAccountRepository userAccountRepository,
+      UserProfileRepository userProfileRepository,
+      MatchingProfileRepository matchingProfileRepository,
+      ProfilePhotoRepository profilePhotoRepository,
+      UserHobbyRepository userHobbyRepository,
+      HobbyRepository hobbyRepository,
+      UserInterestRepository userInterestRepository) {
+    this.matchingPolicy = matchingPolicy;
+    this.matchProposalRepository = matchProposalRepository;
+    this.userAccountRepository = userAccountRepository;
+    this.userProfileRepository = userProfileRepository;
+    this.matchingProfileRepository = matchingProfileRepository;
+    this.profilePhotoRepository = profilePhotoRepository;
+    this.userHobbyRepository = userHobbyRepository;
+    this.hobbyRepository = hobbyRepository;
+    this.userInterestRepository = userInterestRepository;
+  }
 
-	@Transactional(readOnly = true)
-	public List<MatchView> findPendingMatches(Long userId) {
-		return matchProposalRepository
-			.findByStatusAndUserAIdOrStatusAndUserBId(MatchStatus.PENDING, userId, MatchStatus.PENDING, userId)
-			.stream()
-			.sorted(matchComparator())
-			.map(match -> toMatchView(match, userId))
-			.toList();
-	}
+  @Transactional(readOnly = true)
+  public List<MatchView> findPendingMatches(Long userId) {
+    return matchProposalRepository
+        .findByStatusAndUserAIdOrStatusAndUserBId(
+            MatchStatus.PENDING, userId, MatchStatus.PENDING, userId)
+        .stream()
+        .filter(
+            match -> match.getExpiresAt() == null || match.getExpiresAt().isAfter(Instant.now()))
+        .filter(match -> matchingPolicy.pairAllowed(match.getUserAId(), match.getUserBId()))
+        .sorted(matchComparator())
+        .map(match -> toMatchView(match, userId))
+        .toList();
+  }
 
-	@Transactional(readOnly = true)
-	public List<MatchView> findCompletedMatches(Long userId) {
-		return matchProposalRepository
-			.findByStatusAndUserAIdOrStatusAndUserBId(MatchStatus.ACCEPTED, userId, MatchStatus.ACCEPTED, userId)
-			.stream()
-			.sorted(completedMatchComparator())
-			.map(match -> toMatchView(match, userId))
-			.toList();
-	}
+  @Transactional(readOnly = true)
+  public List<MatchView> findCompletedMatches(Long userId) {
+    return matchProposalRepository
+        .findByStatusAndUserAIdOrStatusAndUserBId(
+            MatchStatus.ACCEPTED, userId, MatchStatus.ACCEPTED, userId)
+        .stream()
+        .sorted(completedMatchComparator())
+        .map(match -> toMatchView(match, userId))
+        .toList();
+  }
 
-	@Transactional(readOnly = true)
-	public MatchView findMatch(Long matchId, Long userId) {
-		MatchProposal match = matchProposalRepository.findById(matchId)
-			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Match not found."));
-		if (!isParticipant(match, userId)) {
-			throw new BusinessException(HttpStatus.NOT_FOUND, "Match not found.");
-		}
-		return toMatchView(match, userId);
-	}
+  @Transactional(readOnly = true)
+  public MatchView findMatch(Long matchId, Long userId) {
+    MatchProposal match =
+        matchProposalRepository
+            .findById(matchId)
+            .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Match not found."));
+    if (!isParticipant(match, userId)) {
+      throw new BusinessException(HttpStatus.NOT_FOUND, "Match not found.");
+    }
+    matchingPolicy.requirePair(match.getUserAId(), match.getUserBId());
+    return toMatchView(match, userId);
+  }
 
-	private MatchView toMatchView(MatchProposal match, Long userId) {
-		Long counterpartUserId = counterpartUserId(match, userId);
-		UserAccount counterpart = userAccountRepository.findById(counterpartUserId)
-			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "Matched user not found."));
-		UserProfile profile = userProfileRepository.findByUserId(counterpartUserId).orElse(null);
-		String intro = matchingProfileRepository.findByUserId(counterpartUserId)
-			.map(matchingProfile -> matchingProfile.getJobIntro())
-			.orElse(null);
-		List<ProfilePhoto> photos = profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(counterpartUserId);
-		String photoUrl = photos.stream()
-			.findFirst()
-			.map(ProfilePhoto::getImageUrl)
-			.orElse(null);
-		int viewerPhotoCount = profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId).size();
-		boolean hasLiked = hasActiveInterest(userId, counterpartUserId, InterestType.LIKE);
-		boolean hasExpressed = hasActiveInterest(userId, counterpartUserId, InterestType.EXPRESS);
+  private MatchView toMatchView(MatchProposal match, Long userId) {
+    Long counterpartUserId = counterpartUserId(match, userId);
+    UserAccount counterpart =
+        userAccountRepository
+            .findById(counterpartUserId)
+            .orElseThrow(
+                () -> new BusinessException(HttpStatus.NOT_FOUND, "Matched user not found."));
+    UserProfile profile = userProfileRepository.findByUserId(counterpartUserId).orElse(null);
+    var matchingProfile = matchingProfileRepository.findByUserId(counterpartUserId).orElse(null);
+    String intro = matchingProfile == null ? null : matchingProfile.getJobIntro();
+    List<ProfilePhoto> photos =
+        profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(counterpartUserId).stream()
+            .filter(
+                photo ->
+                    photo.getReviewStatus()
+                        == com.oao.backend.user.domain.UserVerificationDocument.ReviewStatus
+                            .APPROVED)
+            .toList();
+    String photoUrl = photos.stream().findFirst().map(ProfilePhoto::getImageUrl).orElse(null);
+    int viewerPhotoCount =
+        (int)
+            profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId).stream()
+                .filter(
+                    p ->
+                        p.getReviewStatus()
+                            == com.oao.backend.user.domain.UserVerificationDocument.ReviewStatus
+                                .APPROVED)
+                .count();
+    boolean hasLiked = hasActiveInterest(userId, counterpartUserId, InterestType.LIKE);
+    boolean hasExpressed = hasActiveInterest(userId, counterpartUserId, InterestType.EXPRESS);
 
-		return new MatchView(
-			match.getId(),
-			match.getStatus().name(),
-			currentUserDecision(match, userId).name(),
-			counterpartDecision(match, userId).name(),
-			match.getExpiresAt(),
-			match.getMatchedAt(),
-			match.getMatchedReason(),
-			match.isSGradeGuaranteed(),
-			counterpart.getId(),
-			counterpart.getName(),
-			age(counterpart.getBirthDate()),
-			counterpart.getGender() == null ? null : counterpart.getGender().name(),
-			counterpart.getGrade() == null ? null : counterpart.getGrade().name(),
-			profile == null ? null : profile.getJob(),
-			profile == null ? null : profile.getActivityRegion(),
-			profile == null ? null : profile.getHeightCm(),
-			profile == null ? null : profile.getMbti(),
-			profile == null ? null : profile.getEducation(),
-			profile == null ? null : profile.getSmokingStatus(),
-			profile == null ? null : profile.getDrinkingStatus(),
-			profile == null ? null : profile.getReligion(),
-			intro,
-			photoUrl,
-			photoViews(photos),
-			viewerPhotoCount,
-			hobbyViews(userId, counterpartUserId),
-			hasLiked,
-			hasExpressed
-		);
-	}
+    return new MatchView(
+        match.getId(),
+        match.getStatus().name(),
+        currentUserDecision(match, userId).name(),
+        counterpartDecision(match, userId).name(),
+        match.getExpiresAt(),
+        match.getMatchedAt(),
+        match.getMatchedReason(),
+        match.isSGradeGuaranteed(),
+        counterpart.getId(),
+        counterpart.getName(),
+        age(counterpart.getBirthDate()),
+        counterpart.getGender() == null ? null : counterpart.getGender().name(),
+        null,
+        profile == null ? null : profile.getJob(),
+        profile == null ? null : profile.getActivityRegion(),
+        profile == null ? null : profile.getHeightCm(),
+        profile == null ? null : profile.getMbti(),
+        profile == null ? null : profile.getEducation(),
+        profile == null ? null : profile.getSmokingStatus(),
+        profile == null ? null : profile.getDrinkingStatus(),
+        profile == null ? null : profile.getReligion(),
+        intro,
+        matchingProfile == null ? null : matchingProfile.getDatingStyle(),
+        matchingProfile == null ? List.of() : matchingProfile.getPersonalityKeywords(),
+        photoUrl,
+        photoViews(photos),
+        viewerPhotoCount,
+        hobbyViews(userId, counterpartUserId),
+        hasLiked,
+        hasExpressed);
+  }
 
-	private boolean hasActiveInterest(Long senderUserId, Long receiverUserId, InterestType interestType) {
-		return userInterestRepository.existsBySenderUserIdAndReceiverUserIdAndStatusAndInterestType(
-			senderUserId,
-			receiverUserId,
-			InterestStatus.ACTIVE,
-			interestType
-		);
-	}
+  private boolean hasActiveInterest(
+      Long senderUserId, Long receiverUserId, InterestType interestType) {
+    return userInterestRepository.existsBySenderUserIdAndReceiverUserIdAndStatusAndInterestType(
+        senderUserId, receiverUserId, InterestStatus.ACTIVE, interestType);
+  }
 
-	private List<MatchHobbyView> hobbyViews(Long userId, Long counterpartUserId) {
-		Set<Long> myHobbyIds = userHobbyRepository.findByIdUserId(userId).stream()
-			.map(userHobby -> userHobby.getId().getHobbyId())
-			.collect(Collectors.toSet());
-		List<Long> counterpartHobbyIds = userHobbyRepository.findByIdUserId(counterpartUserId).stream()
-			.map(userHobby -> userHobby.getId().getHobbyId())
-			.sorted()
-			.toList();
-		if (counterpartHobbyIds.isEmpty()) {
-			return List.of();
-		}
+  private List<MatchHobbyView> hobbyViews(Long userId, Long counterpartUserId) {
+    Set<Long> myHobbyIds =
+        userHobbyRepository.findByIdUserId(userId).stream()
+            .map(userHobby -> userHobby.getId().getHobbyId())
+            .collect(Collectors.toSet());
+    List<Long> counterpartHobbyIds =
+        userHobbyRepository.findByIdUserId(counterpartUserId).stream()
+            .map(userHobby -> userHobby.getId().getHobbyId())
+            .sorted()
+            .toList();
+    if (counterpartHobbyIds.isEmpty()) {
+      return List.of();
+    }
 
-		Map<Long, Hobby> hobbyById = hobbyRepository.findAllById(counterpartHobbyIds).stream()
-			.collect(Collectors.toMap(Hobby::getId, Function.identity()));
-		return counterpartHobbyIds.stream()
-			.map(hobbyById::get)
-			.filter(hobby -> hobby != null)
-			.map(hobby -> new MatchHobbyView(hobby.getName(), myHobbyIds.contains(hobby.getId())))
-			.toList();
-	}
+    Map<Long, Hobby> hobbyById =
+        hobbyRepository.findAllById(counterpartHobbyIds).stream()
+            .collect(Collectors.toMap(Hobby::getId, Function.identity()));
+    return counterpartHobbyIds.stream()
+        .map(hobbyById::get)
+        .filter(hobby -> hobby != null)
+        .map(hobby -> new MatchHobbyView(hobby.getName(), myHobbyIds.contains(hobby.getId())))
+        .toList();
+  }
 
-	private List<MatchPhotoView> photoViews(List<ProfilePhoto> photos) {
-		return photos.stream()
-			.filter(photo -> photo.getImageUrl() != null && !photo.getImageUrl().isBlank())
-			.map(photo -> new MatchPhotoView(photo.getImageUrl(), photo.getDisplayOrder()))
-			.toList();
-	}
+  private List<MatchPhotoView> photoViews(List<ProfilePhoto> photos) {
+    return photos.stream()
+        .filter(photo -> photo.getImageUrl() != null && !photo.getImageUrl().isBlank())
+        .map(photo -> new MatchPhotoView(photo.getImageUrl(), photo.getDisplayOrder()))
+        .toList();
+  }
 
-	private Comparator<MatchProposal> matchComparator() {
-		return Comparator
-			.comparing(MatchProposal::getExpiresAt, Comparator.nullsLast(Comparator.naturalOrder()))
-			.thenComparing(MatchProposal::getMatchedAt, Comparator.nullsLast(Comparator.reverseOrder()))
-			.thenComparing(MatchProposal::getId);
-	}
+  private Comparator<MatchProposal> matchComparator() {
+    return Comparator.comparing(
+            MatchProposal::getExpiresAt, Comparator.nullsLast(Comparator.naturalOrder()))
+        .thenComparing(MatchProposal::getMatchedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+        .thenComparing(MatchProposal::getId);
+  }
 
-	private Comparator<MatchProposal> completedMatchComparator() {
-		return Comparator
-			.comparing(MatchProposal::getMatchedAt, Comparator.nullsLast(Comparator.reverseOrder()))
-			.thenComparing(MatchProposal::getId, Comparator.reverseOrder());
-	}
+  private Comparator<MatchProposal> completedMatchComparator() {
+    return Comparator.comparing(
+            MatchProposal::getMatchedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+        .thenComparing(MatchProposal::getId, Comparator.reverseOrder());
+  }
 
-	private boolean isParticipant(MatchProposal match, Long userId) {
-		return match.getUserAId().equals(userId) || match.getUserBId().equals(userId);
-	}
+  private boolean isParticipant(MatchProposal match, Long userId) {
+    return match.getUserAId().equals(userId) || match.getUserBId().equals(userId);
+  }
 
-	private Long counterpartUserId(MatchProposal match, Long userId) {
-		if (match.getUserAId().equals(userId)) {
-			return match.getUserBId();
-		}
-		if (match.getUserBId().equals(userId)) {
-			return match.getUserAId();
-		}
-		throw new BusinessException(HttpStatus.FORBIDDEN, "User is not a participant of this match.");
-	}
+  private Long counterpartUserId(MatchProposal match, Long userId) {
+    if (match.getUserAId().equals(userId)) {
+      return match.getUserBId();
+    }
+    if (match.getUserBId().equals(userId)) {
+      return match.getUserAId();
+    }
+    throw new BusinessException(HttpStatus.FORBIDDEN, "User is not a participant of this match.");
+  }
 
-	private MatchDecision currentUserDecision(MatchProposal match, Long userId) {
-		return match.getUserAId().equals(userId) ? match.getUserADecision() : match.getUserBDecision();
-	}
+  private MatchDecision currentUserDecision(MatchProposal match, Long userId) {
+    return match.getUserAId().equals(userId) ? match.getUserADecision() : match.getUserBDecision();
+  }
 
-	private MatchDecision counterpartDecision(MatchProposal match, Long userId) {
-		return match.getUserAId().equals(userId) ? match.getUserBDecision() : match.getUserADecision();
-	}
+  private MatchDecision counterpartDecision(MatchProposal match, Long userId) {
+    return match.getUserAId().equals(userId) ? match.getUserBDecision() : match.getUserADecision();
+  }
 
-	private Integer age(LocalDate birthDate) {
-		if (birthDate == null) {
-			return null;
-		}
-		int age = Period.between(birthDate, LocalDate.now()).getYears();
-		return age > 0 ? age : null;
-	}
+  private Integer age(LocalDate birthDate) {
+    if (birthDate == null) {
+      return null;
+    }
+    int age = Period.between(birthDate, LocalDate.now()).getYears();
+    return age > 0 ? age : null;
+  }
 
-	public record MatchView(
-		Long matchId,
-		String status,
-		String myDecision,
-		String counterpartDecision,
-		Instant expiresAt,
-		Instant matchedAt,
-		String matchedReason,
-		boolean sGradeGuaranteed,
-		Long profileUserId,
-		String name,
-		Integer age,
-		String gender,
-		String grade,
-		String job,
-		String activityRegion,
-		Integer heightCm,
-		String mbti,
-		String education,
-		String smokingStatus,
-		String drinkingStatus,
-		String religion,
-		String intro,
-		String photoUrl,
-		List<MatchPhotoView> photos,
-		int viewerPhotoCount,
-		List<MatchHobbyView> hobbies,
-		boolean hasLiked,
-		boolean hasExpressed
-	) {
-	}
+  public record MatchView(
+      Long matchId,
+      String status,
+      String myDecision,
+      String counterpartDecision,
+      Instant expiresAt,
+      Instant matchedAt,
+      String matchedReason,
+      boolean sGradeGuaranteed,
+      Long profileUserId,
+      String name,
+      Integer age,
+      String gender,
+      String grade,
+      String job,
+      String activityRegion,
+      Integer heightCm,
+      String mbti,
+      String education,
+      String smokingStatus,
+      String drinkingStatus,
+      String religion,
+      String intro,
+      String datingStyle,
+      List<String> personalityKeywords,
+      String photoUrl,
+      List<MatchPhotoView> photos,
+      int viewerPhotoCount,
+      List<MatchHobbyView> hobbies,
+      boolean hasLiked,
+      boolean hasExpressed) {}
 
-	public record MatchPhotoView(
-		String photoUrl,
-		Integer displayOrder
-	) {
-	}
+  public record MatchPhotoView(String photoUrl, Integer displayOrder) {}
 
-	public record MatchHobbyView(
-		String name,
-		boolean common
-	) {
-	}
+  public record MatchHobbyView(String name, boolean common) {}
 }

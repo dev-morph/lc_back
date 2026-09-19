@@ -15,60 +15,60 @@ import java.time.LocalDate;
 @Table(name = "terms_document")
 public class TermsDocument extends BaseTimeEntity {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-	@Enumerated(EnumType.STRING)
-	private TermsType termsType;
+  @Enumerated(EnumType.STRING)
+  private TermsType termsType;
 
-	@Column(length = 100)
-	private String title;
+  @Column(length = 100)
+  private String title;
 
-	@Column(length = 32)
-	private String version;
+  @Column(length = 32)
+  private String version;
 
-	@Column(columnDefinition = "longtext")
-	private String content;
+  @Column(columnDefinition = "longtext")
+  private String content;
 
-	@Column(name = "is_required")
-	private boolean required;
+  @Column(name = "is_required")
+  private boolean required;
 
-	private LocalDate effectiveFrom;
+  @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LOCAL_DATE)
+  private LocalDate effectiveFrom;
 
-	protected TermsDocument() {
-	}
+  protected TermsDocument() {}
 
-	public Long getId() {
-		return id;
-	}
+  public Long getId() {
+    return id;
+  }
 
-	public TermsType getTermsType() {
-		return termsType;
-	}
+  public TermsType getTermsType() {
+    return termsType;
+  }
 
-	public String getTitle() {
-		return title;
-	}
+  public String getTitle() {
+    return title;
+  }
 
-	public String getVersion() {
-		return version;
-	}
+  public String getVersion() {
+    return version;
+  }
 
-	public String getContent() {
-		return content;
-	}
+  public String getContent() {
+    return content;
+  }
 
-	public boolean isRequired() {
-		return required;
-	}
+  public boolean isRequired() {
+    return required;
+  }
 
-	public LocalDate getEffectiveFrom() {
-		return effectiveFrom;
-	}
+  public LocalDate getEffectiveFrom() {
+    return effectiveFrom;
+  }
 
-	public enum TermsType {
-		SERVICE_TERMS,
-		PRIVACY_COLLECTION
-	}
+  public enum TermsType {
+    SERVICE_TERMS,
+    PRIVACY_COLLECTION
+  }
 }
