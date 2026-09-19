@@ -37,7 +37,7 @@ BACKUP_DIR="${BACKUP_DIR:-backups}"
 mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/mariadb-$(date -u +%Y%m%d-%H%M%S).sql"
 echo "Creating required database backup at $BACKUP_FILE..."
-if ! compose exec -T mariadb sh -c \
+if ! compose exec -T --interactive=false mariadb sh -c \
   'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb-dump -u root --single-transaction --routines --events "$MARIADB_DATABASE"' \
   > "$BACKUP_FILE.partial"; then
   echo "Database backup failed. Application deployment stopped." >&2

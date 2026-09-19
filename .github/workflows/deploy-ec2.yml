@@ -48,4 +48,7 @@ jobs:
             set -euo pipefail
             cd "${{ secrets.EC2_APP_DIR }}"
             git fetch origin main
-            git show '${{ github.sha }}:deploy/remote-deploy.sh' | DEPLOY_REVISION='${{ github.sha }}' bash
+            deploy_script=$(mktemp)
+            trap 'rm -f "$deploy_script"' EXIT
+            git show '${{ github.sha }}:deploy/remote-deploy.sh' > "$deploy_script"
+            DEPLOY_REVISION='${{ github.sha }}' bash "$deploy_script"
