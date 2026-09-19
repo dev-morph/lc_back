@@ -1,6 +1,7 @@
 package com.oao.backend.notification.service;
 
 import com.solapi.sdk.SolapiClient;
+import com.solapi.sdk.message.dto.request.SendRequestConfig;
 import com.solapi.sdk.message.model.Message;
 import com.solapi.sdk.message.model.kakao.KakaoOption;
 import java.util.Map;
@@ -26,7 +27,9 @@ public class AlimtalkDeliveryClient {
     message.setTo(phone);
     message.setFrom(from);
     message.setKakaoOptions(option);
-    var result = SolapiClient.INSTANCE.createInstance(key, secret).send(message);
+    var config = new SendRequestConfig();
+    config.setShowMessageList(true);
+    var result = SolapiClient.INSTANCE.createInstance(key, secret).send(message, config);
     return new Delivery(
         result.getFailedMessageList().isEmpty() && !result.getMessageList().isEmpty(),
         result.getMessageList().isEmpty() ? null : result.getMessageList().get(0).getMessageId());
