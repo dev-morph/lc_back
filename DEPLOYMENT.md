@@ -67,33 +67,35 @@ deploy/remote-deploy.sh
 GitHub Actions behavior:
 
 - On `main` push, run `./gradlew test`.
-- If tests pass, SSH into EC2.
-- On EC2, fetch latest `main`, rebuild Docker images, and run Compose.
-- Build the app, then require a non-empty SQL backup in `backups/` before replacing it. Backup failure stops deployment.
-- Deploy the tested commit only, refuse tracked server edits, and wait for the public health endpoint.
-- Preserve public uploads and private verification documents in separate named volumes.
+- Exchange a GitHub OIDC token for a short-lived AWS role session.
+- Send the tested SHA to the `OaoDeployBackend` Systems Manager document.
+- The document runs as `ubuntu` in `/home/ubuntu/workdir/lc_back`.
+- Build the app, require a non-empty SQL backup, deploy and check the public health endpoint.
+- Public uploads and private verification documents use separate named volumes.
 
-Add these GitHub repository secrets:
+Repository Actions variables (not secrets):
 
-```text
-EC2_HOST=<EC2 public IP or api.oao365.com>
-EC2_USER=ubuntu
-EC2_SSH_KEY=<private key contents>
-EC2_SSH_PORT=22
-EC2_APP_DIR=/home/ubuntu/oao_back
+```properties
+AWS_REGION=ap-northeast-2
+EC2_INSTANCE_ID=i-004dfd68aefd00c4e
+SSM_DEPLOY_DOCUMENT=OaoDeployBackend
+AWS_DEPLOY_ROLE_ARN=arn:aws:iam::264284393033:role/oao-github-deploy-role
 ```
 
-Initial EC2 setup still needs to be done once:
+The IAM trust policy accepts only `repo:dev-morph/lc_back:ref:refs/heads/main`.
+The deployment policy allows SendCommand only on the named document and instance;
+GetCommandInvocation is used to report the result. The existing EC2 role needs
+AmazonSSMManagedInstanceCore in addition to its email permissions.
 
-```bash
-git clone <repo-url> /home/ubuntu/oao_back
-cd /home/ubuntu/oao_back
-cp .env.prod.example .env.prod
-vi .env.prod
-docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
-```
+Review `deploy/configure-ssm-oidc.py` and run it in authenticated AWS CloudShell
+with no flags to preview or `--apply` to configure the approved resources.
+No private SSH key or long-lived AWS credential is uploaded to GitHub. SSH ingress
+may remain restricted to the operator's IP. SSM Agent must be online.
 
-After that, pushes to `main` deploy automatically.
+First-time EC2 setup remains as above. The deployment script refuses tracked
+server edits and stale commits, requires a database backup, and retains backups
+under `backups/`. A failed database migration requires investigation before retry;
+do not automatically restore a backup over writes made after deployment.
 
 ## Required Environment Variables
 

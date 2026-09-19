@@ -1,6 +1,8 @@
 package com.oao.backend.auth;
 
 import com.oao.backend.common.BusinessException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -12,9 +14,11 @@ import software.amazon.awssdk.services.sesv2.model.Destination;
 import software.amazon.awssdk.services.sesv2.model.EmailContent;
 import software.amazon.awssdk.services.sesv2.model.Message;
 import software.amazon.awssdk.services.sesv2.model.SendEmailRequest;
+import software.amazon.awssdk.services.sesv2.model.SesV2Exception;
 
 @Service
 public class EmailDeliveryService {
+  private static final Logger log = LoggerFactory.getLogger(EmailDeliveryService.class);
   private final SesV2Client client;
   private final String from;
 
@@ -52,6 +56,14 @@ public class EmailDeliveryService {
               .content(EmailContent.builder().simple(message).build())
               .build());
     } catch (SdkException e) {
+      if (e instanceof SesV2Exception ses) {
+        log.warn("SES request failed: status={}, code={}, requestId={}",
+            ses.statusCode(), ses.awsErrorDetails() == null ? "unknown" : ses.awsErrorDetails().errorCode(),
+            ses.requestId());
+      } else {
+        log.warn("SES client failed: type={}, cause={}", e.getClass().getSimpleName(),
+            e.getCause() == null ? "unknown" : e.getCause().getClass().getSimpleName());
+      }
       throw new BusinessException(HttpStatus.BAD_GATEWAY, "인증 이메일을 보내지 못했습니다. 잠시 후 다시 시도해주세요.");
     }
   }

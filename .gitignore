@@ -56,3 +56,4 @@ logs/
 # Private verification files (never publish or commit)
 private-verification/
 backups/
+__pycache__/
