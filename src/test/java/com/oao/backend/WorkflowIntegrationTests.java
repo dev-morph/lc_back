@@ -61,6 +61,8 @@ class WorkflowIntegrationTests {
   @Autowired MatchingPolicyService policy;
   @Autowired ModerationService moderation;
   @Autowired VerificationReviewService reviews;
+  @Autowired ProfileOnboardingService onboarding;
+  @Autowired UserProfileService profiles;
   @Autowired ChatService chat;
   @Autowired ChatMessageActions messages;
   @Autowired MeetingLifecycleService meetings;
@@ -636,6 +638,94 @@ class WorkflowIntegrationTests {
     assertThat(policy.eligible(user)).isFalse();
     reviews.delete(user, id);
     assertThat(count("select count(*) from user_verification_document where id=?", id)).isZero();
+  }
+
+  @Test
+  void onboardingRequiresActiveEmploymentAndEducationSubmissions() {
+    eligible(user);
+
+    var initial = onboarding.status(user);
+    assertThat(initial.profileCompleted()).isTrue();
+    assertThat(initial.introPhotoCompleted()).isTrue();
+    assertThat(initial.onboardingCompleted()).isFalse();
+    assertThatThrownBy(() -> onboarding.complete(user))
+        .isInstanceOf(BusinessException.class)
+        .hasMessageContaining("직업 확인 서류");
+
+    var proof =
+        new MockMultipartFile(
+            "file", "proof.pdf", "application/pdf", "%PDF-1.4 fixture".getBytes());
+    reviews.upload(user, "EMPLOYMENT", proof);
+    long rejectedEmployment =
+        count(
+            "select max(id) from user_verification_document where user_id=? and document_type='EMPLOYMENT'",
+            user);
+    reviews.review(rejectedEmployment, false, "REJECTED", "직업 서류를 다시 제출해주세요.", 1L);
+    assertThat(onboarding.status(user).employmentDocumentSubmitted()).isFalse();
+
+    reviews.upload(user, "EMPLOYMENT", proof);
+    long approvedEmployment =
+        count(
+            "select max(id) from user_verification_document where user_id=? and document_type='EMPLOYMENT'",
+            user);
+    reviews.review(approvedEmployment, false, "APPROVED", null, 1L);
+    reviews.upload(user, "EMPLOYMENT", proof);
+    long latestRejectedEmployment =
+        count(
+            "select max(id) from user_verification_document where user_id=? and document_type='EMPLOYMENT'",
+            user);
+    reviews.review(latestRejectedEmployment, false, "REJECTED", "최신 서류가 흐립니다.", 1L);
+    assertThat(onboarding.status(user).employmentDocumentSubmitted()).isFalse();
+
+    reviews.upload(user, "EMPLOYMENT", proof);
+    assertThatThrownBy(() -> onboarding.complete(user))
+        .isInstanceOf(BusinessException.class)
+        .hasMessageContaining("학력 확인 서류");
+    reviews.upload(user, "EDUCATION", proof);
+
+    assertThat(onboarding.complete(user).onboardingCompleted()).isTrue();
+    assertThat(
+            db.queryForObject(
+                "select onboarding_completed_at is not null from user_account where id=?",
+                Boolean.class,
+                user))
+        .isTrue();
+    assertThat(onboarding.complete(user).onboardingCompleted()).isTrue();
+  }
+
+  @Test
+  void profileStoresOrderedStructuredActivityRegions() {
+    var regions =
+        List.of(
+            new UserProfileService.ActivityRegionValue("SEOUL_MAPO", "서울 마포구"),
+            new UserProfileService.ActivityRegionValue("SEOUL_YEONGDEUNGPO", "서울 영등포구"));
+    var command =
+        new UserProfileService.ProfileUpdateCommand(
+            "여름",
+            java.time.LocalDate.of(1995, 1, 1),
+            com.oao.backend.user.domain.UserAccount.Gender.FEMALE,
+            "서비스 기획자",
+            165,
+            "AVERAGE",
+            "NON_SMOKER",
+            "SOCIAL",
+            "NONE",
+            "ENFP",
+            "대학교 졸업",
+            "서울 마포구",
+            regions,
+            List.of("헬스"));
+
+    var saved = profiles.updateProfile(user, command);
+
+    assertThat(saved.activityRegion()).isEqualTo("서울 마포구");
+    assertThat(saved.activityRegions()).containsExactlyElementsOf(regions);
+    assertThat(
+            db.queryForObject(
+                "select region_label from user_activity_region where user_id=? and display_order=1",
+                String.class,
+                user))
+        .isEqualTo("서울 영등포구");
   }
 
   @Test

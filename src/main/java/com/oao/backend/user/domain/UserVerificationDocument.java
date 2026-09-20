@@ -57,6 +57,14 @@ public class UserVerificationDocument extends BaseTimeEntity {
 		return id;
 	}
 
+	public Long getUserId() {
+		return userId;
+	}
+
+	public String getDocumentType() {
+		return documentType;
+	}
+
 	public ReviewStatus getReviewStatus() {
 		return reviewStatus;
 	}

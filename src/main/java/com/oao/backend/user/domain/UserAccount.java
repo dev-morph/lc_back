@@ -38,6 +38,7 @@ public class UserAccount extends BaseTimeEntity {
   private LocalDate birthDate;
   private Instant approvedAt;
   private Long approvedByAdminId;
+  private Instant onboardingCompletedAt;
   private Instant deletedAt;
   private int authVersion;
   private String rejectionReason;
@@ -82,6 +83,12 @@ public class UserAccount extends BaseTimeEntity {
     this.gender = gender;
   }
 
+  public void completeOnboarding() {
+    if (this.onboardingCompletedAt == null) {
+      this.onboardingCompletedAt = Instant.now();
+    }
+  }
+
   public void suspend() {
     this.status = UserStatus.SUSPENDED;
     this.authVersion++;
@@ -118,6 +125,10 @@ public class UserAccount extends BaseTimeEntity {
 
   public UserStatus getStatus() {
     return status;
+  }
+
+  public Instant getOnboardingCompletedAt() {
+    return onboardingCompletedAt;
   }
 
   public enum UserStatus {

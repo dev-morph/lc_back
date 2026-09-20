@@ -11,6 +11,7 @@ import com.oao.backend.user.repository.UserVerificationDocumentRepository;
 import com.oao.backend.user.service.ProfileIntroPhotoService;
 import com.oao.backend.user.service.ProfileIntroPhotoService.IntroPhotoView;
 import com.oao.backend.user.service.UserProfileService;
+import com.oao.backend.user.service.UserProfileService.ActivityRegionValue;
 import com.oao.backend.user.service.UserProfileService.ProfileUpdateCommand;
 import com.oao.backend.user.service.UserProfileService.ProfileView;
 import jakarta.validation.Valid;
@@ -131,6 +132,7 @@ public class MeController {
       @NotBlank @Size(max = 8) String mbti,
       @NotBlank @Size(max = 100) String education,
       @NotBlank @Size(max = 64) String activityRegion,
+      @Size(max = 3) List<@Valid ActivityRegionRequest> activityRegions,
       @NotNull @Size(min = 1, max = 8) List<@NotBlank @Size(max = 64) String> hobbies) {
 
     ProfileUpdateCommand toCommand() {
@@ -147,9 +149,17 @@ public class MeController {
           mbti,
           education,
           activityRegion,
+          activityRegions == null
+              ? null
+              : activityRegions.stream()
+                  .map(region -> new ActivityRegionValue(region.code(), region.label()))
+                  .toList(),
           hobbies);
     }
   }
+
+  record ActivityRegionRequest(
+      @NotBlank @Size(max = 64) String code, @NotBlank @Size(max = 100) String label) {}
 
   record ApprovalStatusResponse(Long userId, String approvalStatus, String grade) {
 
@@ -175,6 +185,7 @@ public class MeController {
       String education,
       String activityRegion,
       List<String> hobbies,
+      List<ActivityRegionResponse> activityRegions,
       boolean profileCompleted) {
 
     static ProfileResponse from(ProfileView profile) {
@@ -192,7 +203,14 @@ public class MeController {
           profile.education(),
           profile.activityRegion(),
           profile.hobbies(),
+          profile.activityRegions().stream().map(ActivityRegionResponse::from).toList(),
           profile.profileCompleted());
+    }
+  }
+
+  record ActivityRegionResponse(String code, String label) {
+    static ActivityRegionResponse from(ActivityRegionValue region) {
+      return new ActivityRegionResponse(region.code(), region.label());
     }
   }
 

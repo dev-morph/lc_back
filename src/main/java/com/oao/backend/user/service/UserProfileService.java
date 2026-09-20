@@ -18,6 +18,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +33,8 @@ public class UserProfileService {
 	private static final Set<String> FEMALE_BODY_TYPES = Set.of("THIN", "SLIM_FIT", "AVERAGE", "SLIGHT_VOLUME", "GLAMOROUS");
 	private static final int MIN_HOBBY_COUNT = 1;
 	private static final int MAX_HOBBY_COUNT = 8;
+	private static final int MAX_ACTIVITY_REGION_COUNT = 3;
+	private static final String ACTIVITY_REGION_CODE_PATTERN = "[A-Z0-9_]{2,64}";
 	private static final Set<String> MBTIS = Set.of(
 		"ISTJ",
 		"ISFJ",
@@ -55,17 +58,20 @@ public class UserProfileService {
 	private final UserProfileRepository userProfileRepository;
 	private final HobbyRepository hobbyRepository;
 	private final UserHobbyRepository userHobbyRepository;
+	private final JdbcTemplate jdbc;
 
 	public UserProfileService(
 		UserAccountRepository userAccountRepository,
 		UserProfileRepository userProfileRepository,
 		HobbyRepository hobbyRepository,
-		UserHobbyRepository userHobbyRepository
+		UserHobbyRepository userHobbyRepository,
+		JdbcTemplate jdbc
 	) {
 		this.userAccountRepository = userAccountRepository;
 		this.userProfileRepository = userProfileRepository;
 		this.hobbyRepository = hobbyRepository;
 		this.userHobbyRepository = userHobbyRepository;
+		this.jdbc = jdbc;
 	}
 
 	@Transactional(readOnly = true)
@@ -73,7 +79,12 @@ public class UserProfileService {
 		UserAccount user = findUser(userId);
 		UserProfile profile = userProfileRepository.findByUserId(userId).orElse(null);
 		List<String> hobbies = findHobbyNames(userId);
-		return ProfileView.from(user, profile, hobbies, isProfileCompleted(user, profile, hobbies));
+		return ProfileView.from(
+			user,
+			profile,
+			hobbies,
+			findActivityRegions(userId),
+			isProfileCompleted(user, profile, hobbies));
 	}
 
 	@Transactional
@@ -84,7 +95,12 @@ public class UserProfileService {
 		String name = trim(command.name());
 		String job = trim(command.job());
 		String education = trim(command.education());
-		String activityRegion = trim(command.activityRegion());
+		List<ActivityRegionValue> activityRegions = command.activityRegions() == null
+			? findActivityRegions(userId)
+			: normalizedActivityRegions(command.activityRegions());
+		String activityRegion = activityRegions.isEmpty()
+			? trim(command.activityRegion())
+			: activityRegions.getFirst().label();
 		List<Hobby> selectedHobbies = selectedHobbies(command.hobbies());
 
 		user.updateBasicInfo(name, command.birthDate());
@@ -117,9 +133,17 @@ public class UserProfileService {
 				command.drinkingStatus()
 			)));
 		replaceHobbies(userId, selectedHobbies);
+		if (command.activityRegions() != null) {
+			replaceActivityRegions(userId, activityRegions);
+		}
 
 		List<String> hobbies = selectedHobbies.stream().map(Hobby::getName).toList();
-		return ProfileView.from(user, profile, hobbies, isProfileCompleted(user, profile, hobbies));
+		return ProfileView.from(
+			user,
+			profile,
+			hobbies,
+			activityRegions,
+			isProfileCompleted(user, profile, hobbies));
 	}
 
 	private UserAccount findUser(Long userId) {
@@ -157,7 +181,9 @@ public class UserProfileService {
 		if (trim(command.education()).length() < 2) {
 			throw new BusinessException(HttpStatus.BAD_REQUEST, "Education must be at least 2 characters.");
 		}
-		if (trim(command.activityRegion()).length() < 2) {
+		if (command.activityRegions() != null) {
+			normalizedActivityRegions(command.activityRegions());
+		} else if (trim(command.activityRegion()).length() < 2) {
 			throw new BusinessException(HttpStatus.BAD_REQUEST, "Activity region must be at least 2 characters.");
 		}
 		validateHobbyNames(command.hobbies());
@@ -246,6 +272,48 @@ public class UserProfileService {
 			.toList());
 	}
 
+	private List<ActivityRegionValue> findActivityRegions(Long userId) {
+		return jdbc.query(
+			"select region_code,region_label from user_activity_region where user_id=? order by display_order",
+			(rs, rowNumber) -> new ActivityRegionValue(rs.getString("region_code"), rs.getString("region_label")),
+			userId);
+	}
+
+	private List<ActivityRegionValue> normalizedActivityRegions(List<ActivityRegionValue> regions) {
+		if (regions == null || regions.isEmpty() || regions.size() > MAX_ACTIVITY_REGION_COUNT) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST, "Activity regions must contain between 1 and 3 items.");
+		}
+
+		LinkedHashSet<String> regionCodes = new LinkedHashSet<>();
+		java.util.ArrayList<ActivityRegionValue> normalized = new java.util.ArrayList<>();
+		for (ActivityRegionValue region : regions) {
+			String code = trim(region == null ? null : region.code()).toUpperCase();
+			String label = trim(region == null ? null : region.label());
+			if (!code.matches(ACTIVITY_REGION_CODE_PATTERN) || label.length() < 2 || label.length() > 100) {
+				throw new BusinessException(HttpStatus.BAD_REQUEST, "Activity region is invalid.");
+			}
+			if (!regionCodes.add(code)) {
+				throw new BusinessException(HttpStatus.BAD_REQUEST, "Activity regions must not contain duplicates.");
+			}
+			normalized.add(new ActivityRegionValue(code, label));
+		}
+		return List.copyOf(normalized);
+	}
+
+	private void replaceActivityRegions(Long userId, List<ActivityRegionValue> regions) {
+		jdbc.update("delete from user_activity_region where user_id=?", userId);
+		for (int index = 0; index < regions.size(); index++) {
+			ActivityRegionValue region = regions.get(index);
+			jdbc.update(
+				"insert into user_activity_region(user_id,region_code,region_label,display_order,created_at,updated_at)"
+					+ " values (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+				userId,
+				region.code(),
+				region.label(),
+				index);
+		}
+	}
+
 	private void requireAllowed(String fieldName, String value, Set<String> allowedValues) {
 		if (!allowedValues.contains(value)) {
 			throw new BusinessException(HttpStatus.BAD_REQUEST, fieldName + " is invalid.");
@@ -285,6 +353,7 @@ public class UserProfileService {
 		String mbti,
 		String education,
 		String activityRegion,
+		List<ActivityRegionValue> activityRegions,
 		List<String> hobbies
 	) {
 	}
@@ -303,10 +372,16 @@ public class UserProfileService {
 		String education,
 		String activityRegion,
 		List<String> hobbies,
+		List<ActivityRegionValue> activityRegions,
 		boolean profileCompleted
 	) {
 
-		static ProfileView from(UserAccount user, UserProfile profile, List<String> hobbies, boolean profileCompleted) {
+		static ProfileView from(
+			UserAccount user,
+			UserProfile profile,
+			List<String> hobbies,
+			List<ActivityRegionValue> activityRegions,
+			boolean profileCompleted) {
 			return new ProfileView(
 				user.getName(),
 				user.getBirthDate(),
@@ -321,8 +396,11 @@ public class UserProfileService {
 				profile == null ? null : profile.getEducation(),
 				profile == null ? null : profile.getActivityRegion(),
 				hobbies,
+				activityRegions,
 				profileCompleted
 			);
 		}
 	}
+
+	public record ActivityRegionValue(String code, String label) {}
 }
