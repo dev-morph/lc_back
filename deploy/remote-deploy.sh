@@ -53,7 +53,7 @@ echo "Starting the new application without replacing the database..."
 compose up -d --no-deps app caddy
 
 HEALTH_URL="${DEPLOY_HEALTH_URL:-https://api.oao365.com/api/health}"
-AUTH_URL="${DEPLOY_AUTH_URL:-https://api.oao365.com/api/auth/me}"
+AUTH_URL="${DEPLOY_AUTH_URL:-https://api.oao365.com/auth/me}"
 for attempt in $(seq 1 30); do
   if curl --fail --silent --show-error --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
     if curl --fail --silent --show-error --max-time 5 "$AUTH_URL" | grep -q '"success":true'; then
