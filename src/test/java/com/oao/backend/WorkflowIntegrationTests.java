@@ -818,6 +818,22 @@ class WorkflowIntegrationTests {
   @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
 
   @Test
+  void emailLoginUsesTheSameFailureForUnknownEmailAndWrongPassword() {
+    String registered = address();
+    String start = email.start(registered, "GoodPass1234", "LINK", user).get("challengeId").toString();
+    email.verify(start, codes.get(registered), null, user);
+
+    assertThatThrownBy(() -> email.login(address(), "GoodPass1234"))
+        .isInstanceOf(BusinessException.class)
+        .extracting("status", "message")
+        .containsExactly(org.springframework.http.HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호를 확인해주세요.");
+    assertThatThrownBy(() -> email.login(registered, "WrongPass1234"))
+        .isInstanceOf(BusinessException.class)
+        .extracting("status", "message")
+        .containsExactly(org.springframework.http.HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호를 확인해주세요.");
+  }
+
+  @Test
   void persistentMemberSessionSurvivesRepositoryRecreationAndRenewsCookie() throws Exception {
     String address = address();
     String start = email.start(address, "GoodPass1234", "LINK", user).get("challengeId").toString();

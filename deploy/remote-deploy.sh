@@ -53,10 +53,18 @@ echo "Starting the new application without replacing the database..."
 compose up -d --no-deps app caddy
 
 HEALTH_URL="${DEPLOY_HEALTH_URL:-https://api.oao365.com/api/health}"
+AUTH_URL="${DEPLOY_AUTH_URL:-https://api.oao365.com/api/auth/me}"
 for attempt in $(seq 1 30); do
   if curl --fail --silent --show-error --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
-    echo "Deployment healthy: $REVISION"
-    exit 0
+    if curl --fail --silent --show-error --max-time 5 "$AUTH_URL" | grep -q '"success":true'; then
+      echo "Deployment healthy: $REVISION"
+      exit 0
+    fi
+    echo "Health endpoint passed but anonymous authentication check failed." >&2
+    compose logs --tail=160 app 2>&1 \
+      | grep -A30 -B2 'Unhandled server exception' \
+      | tail -100 >&2 || true
+    exit 1
   fi
   sleep 4
 done
