@@ -37,7 +37,7 @@ public class AccountSettingsService {
         db.list(
             "select alimtalk_enabled,message_notifications from user_preferences where user_id=?",
             id);
-    row.put("alimtalkEnabled", false);
+    row.put("alimtalkEnabled", true);
     row.put("messageNotifications", true);
     if (!pref.isEmpty()) row.putAll(pref.get(0));
     row.put(

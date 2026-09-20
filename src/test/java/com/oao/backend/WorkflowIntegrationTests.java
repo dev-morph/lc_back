@@ -167,12 +167,20 @@ class WorkflowIntegrationTests {
   }
 
   @Test
+  void alimtalkDefaultsOnButPreservesExplicitOptOut() {
+    assertThat(settings.settings(user).get("alimtalkEnabled")).isEqualTo(true);
+    settings.update(user, false, null, List.of(), false, true);
+    assertThat(settings.settings(user).get("alimtalkEnabled")).isEqualTo(false);
+    db.update("insert into user_preferences(user_id,message_notifications,updated_at) values (?,true,CURRENT_TIMESTAMP)", other);
+    assertThat(settings.settings(other).get("alimtalkEnabled")).isEqualTo(true);
+  }
+
+  @Test
   void uncertainNotificationDoesNotResendUntilAnAdministratorRetries() throws Exception {
     eligible(user);
-    db.update(
-        "insert into user_preferences(user_id,alimtalk_enabled,message_notifications,updated_at)"
-            + " values (?,true,true,CURRENT_TIMESTAMP)",
-        user);
+    // The dispatcher processes all users; isolate its queue from earlier test fixtures.
+    db.update("delete from notification_outbox");
+    // No preference row: verify that the new default really permits delivery.
     long proposal = match("PENDING");
     var client = mock(com.oao.backend.notification.service.AlimtalkDeliveryClient.class);
     var outbox =
@@ -232,7 +240,7 @@ class WorkflowIntegrationTests {
             anyString());
     long id = count("select id from notification_outbox where user_id=?", user);
     outbox.retry(id);
-    db.update("update user_preferences set alimtalk_enabled=false where user_id=?", user);
+    settings.update(user, false, null, List.of(), false, true);
     outbox.dispatch();
     assertThat(
             db.queryForObject(

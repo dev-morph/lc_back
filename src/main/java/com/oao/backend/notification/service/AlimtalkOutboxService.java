@@ -79,8 +79,8 @@ public class AlimtalkOutboxService {
 
   private boolean consent(Long user) {
     return db.count(
-            "select count(*) from user_preferences p join user_account u on u.id=p.user_id where"
-                + " p.user_id=? and p.alimtalk_enabled=true and u.status='ACTIVE'",
+            "select count(*) from user_account u left join user_preferences p on u.id=p.user_id where"
+                + " u.id=? and coalesce(p.alimtalk_enabled,true)=true and u.status='ACTIVE'",
             user)
         > 0;
   }
