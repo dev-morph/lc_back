@@ -30,6 +30,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
       return;
     }
 
+    PersistentSessionPolicy.memberSignedIn(request);
     boolean linked =
         request.getSession(false) != null
             && Boolean.TRUE.equals(request.getSession(false).getAttribute("KAKAO_LINK_COMPLETED"));

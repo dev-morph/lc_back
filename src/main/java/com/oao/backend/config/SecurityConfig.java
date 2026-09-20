@@ -32,10 +32,11 @@ public class SecurityConfig {
       KakaoOAuth2UserService kakaoOAuth2UserService,
       OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler,
       com.oao.backend.dev.service.DevToolGuardService devGuard,
-      com.oao.backend.user.repository.UserAccountRepository users)
+      com.oao.backend.user.repository.UserAccountRepository users,
+      org.springframework.session.web.http.CookieSerializer cookies)
       throws Exception {
     http.addFilterBefore(
-            new com.oao.backend.auth.ApiAccessFilter(devGuard, users, allowedOrigins),
+            new com.oao.backend.auth.ApiAccessFilter(devGuard, users, allowedOrigins, cookies),
             org.springframework.security.web.authentication.logout.LogoutFilter.class)
         .cors(cors -> cors.configurationSource(corsConfigurationSource()))
         .csrf(csrf -> csrf.disable())

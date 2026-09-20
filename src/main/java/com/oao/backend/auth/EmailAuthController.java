@@ -94,6 +94,7 @@ public class EmailAuthController {
     principal.setAuthVersion(user.getAuthVersion());
     if (request.getSession(false) != null) request.changeSessionId();
     else request.getSession(true);
+    PersistentSessionPolicy.memberSignedIn(request);
     var context = SecurityContextHolder.createEmptyContext();
     context.setAuthentication(
         UsernamePasswordAuthenticationToken.authenticated(

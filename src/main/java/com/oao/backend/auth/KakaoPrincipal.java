@@ -8,6 +8,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
 public class KakaoPrincipal implements OAuth2User, java.io.Serializable {
+  private static final long serialVersionUID = 1L;
   private int authVersion;
 
   public int getAuthVersion() {

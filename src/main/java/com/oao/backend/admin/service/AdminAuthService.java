@@ -36,6 +36,10 @@ public class AdminAuthService {
 		HttpSession session = request.getSession(true);
 		request.changeSessionId();
 		session.setAttribute(ADMIN_SESSION_ATTRIBUTE, admin.getId());
+        session.setAttribute("OAO_ADMIN_LAST_ACCESS", System.currentTimeMillis());
+        session.setAttribute("OAO_ADMIN_CREDENTIAL_VERSION", credentialVersion(admin));
+        if (!Boolean.TRUE.equals(session.getAttribute(com.oao.backend.auth.PersistentSessionPolicy.MEMBER_SESSION)))
+            session.setMaxInactiveInterval(com.oao.backend.auth.PersistentSessionPolicy.ADMIN_SECONDS);
 		admin.recordLogin();
 		return admin;
 	}
@@ -44,6 +48,10 @@ public class AdminAuthService {
 		HttpSession session = request.getSession(false);
 		if (session != null) {
 			session.removeAttribute(ADMIN_SESSION_ATTRIBUTE);
+            session.removeAttribute("OAO_ADMIN_LAST_ACCESS");
+            session.removeAttribute("OAO_ADMIN_CREDENTIAL_VERSION");
+            if (!Boolean.TRUE.equals(session.getAttribute(com.oao.backend.auth.PersistentSessionPolicy.MEMBER_SESSION)))
+                session.invalidate();
 		}
 	}
 
@@ -53,8 +61,27 @@ public class AdminAuthService {
 		if (adminId == null) {
 			return null;
 		}
-		return adminUserRepository.findByIdAndStatus(adminId, ACTIVE_STATUS).orElse(null);
+		var admin = adminUserRepository.findByIdAndStatus(adminId, ACTIVE_STATUS).orElse(null);
+        var session = request.getSession(false);
+        Object last = session.getAttribute("OAO_ADMIN_LAST_ACCESS");
+        if (admin == null || !(last instanceof Long time)
+            || System.currentTimeMillis() - time >= com.oao.backend.auth.PersistentSessionPolicy.ADMIN_SECONDS * 1000L
+            || !credentialVersion(admin).equals(session.getAttribute("OAO_ADMIN_CREDENTIAL_VERSION"))) {
+            logout(request);
+            return null;
+        }
+        session.setAttribute("OAO_ADMIN_LAST_ACCESS", System.currentTimeMillis());
+        return admin;
 	}
+
+    private String credentialVersion(AdminUser admin) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(java.util.Objects.toString(admin.getPasswordHash(), "").getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
 	private boolean hasUsablePassword(AdminUser admin, String rawPassword) {
 		String passwordHash = admin.getPasswordHash();

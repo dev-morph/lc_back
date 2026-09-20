@@ -812,6 +812,109 @@ class WorkflowIntegrationTests {
     assertThatThrownBy(() -> meetings.cancel(event, user)).isInstanceOf(BusinessException.class);
   }
 
+  @Autowired org.springframework.session.jdbc.JdbcIndexedSessionRepository sessions;
+  @Autowired com.oao.backend.admin.service.AdminAuthService adminAuth;
+  @Autowired com.oao.backend.user.repository.AdminUserRepository admins;
+  @Autowired org.springframework.security.crypto.password.PasswordEncoder encoder;
+
+  @Test
+  void persistentMemberSessionSurvivesRepositoryRecreationAndRenewsCookie() throws Exception {
+    String address = address();
+    String start = email.start(address, "GoodPass1234", "LINK", user).get("challengeId").toString();
+    email.verify(start, codes.get(address), null, user);
+    var cookies = new java.net.CookieManager(null, java.net.CookiePolicy.ACCEPT_ALL);
+    var client = HttpClient.newBuilder().cookieHandler(cookies).build();
+    String base = "http://localhost:" + port;
+    var response = client.send(HttpRequest.newBuilder(URI.create(base + "/auth/email/login"))
+        .header("Origin", "http://localhost:3000").header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString("{\"email\":\"" + address + "\",\"password\":\"GoodPass1234\"}"))
+        .build(), HttpResponse.BodyHandlers.ofString());
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.headers().allValues("set-cookie").toString())
+        .contains("Max-Age=2592000", "HttpOnly", "SameSite=Lax");
+    String encoded = cookies.getCookieStore().getCookies().stream()
+        .filter(c -> c.getName().equals("OAO_SESSION")).findFirst().orElseThrow().getValue().replace("\"", "");
+    String id = new String(Base64.getDecoder().decode(encoded), java.nio.charset.StandardCharsets.UTF_8);
+    // A fresh repository has no in-memory state from the login request.
+    @SuppressWarnings("unchecked")
+    org.springframework.session.SessionRepository<org.springframework.session.Session> fresh =
+        (org.springframework.session.SessionRepository<org.springframework.session.Session>)
+        (org.springframework.session.SessionRepository<?>) new org.springframework.session.jdbc.JdbcIndexedSessionRepository(db, new org.springframework.transaction.support.TransactionTemplate(transactionManager));
+    var restored = fresh.findById(id);
+    assertThat(restored).isNotNull();
+    assertThat(restored.getMaxInactiveInterval()).isEqualTo(java.time.Duration.ofDays(30));
+    var context = (org.springframework.security.core.context.SecurityContext) restored.getAttribute("SPRING_SECURITY_CONTEXT");
+    assertThat(((KakaoPrincipal) context.getAuthentication().getPrincipal()).getUserId()).isEqualTo(user);
+    var access = client.send(HttpRequest.newBuilder(URI.create(base + "/me/settings")).GET().build(), HttpResponse.BodyHandlers.ofString());
+    assertThat(access.statusCode()).isEqualTo(200);
+    assertThat(access.headers().allValues("set-cookie").toString()).contains("Max-Age=2592000");
+    restored = fresh.findById(id);
+    restored.setLastAccessedTime(Instant.now().minusSeconds(30L * 86400 + 1));
+    fresh.save(restored);
+    assertThat(client.send(HttpRequest.newBuilder(URI.create(base + "/me/settings")).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
+  }
+
+  @Test
+  void administratorExpiryDoesNotExtendWithMemberActivityAndPasswordChangesRevokeAccess() {
+    var admin = admins.saveAndFlush(com.oao.backend.user.domain.AdminUser.createEmailAdmin(
+        address(), "테스트 관리자", "SUPER_ADMIN", encoder.encode("AdminPass1234")));
+    var request = new org.springframework.mock.web.MockHttpServletRequest();
+    adminAuth.login(admin.getEmail(), "AdminPass1234", request);
+    assertThat(request.getSession().getMaxInactiveInterval()).isEqualTo(43200);
+    assertThat(adminAuth.findCurrentAdminOrNull(request)).isNotNull();
+    PersistentSessionPolicy.memberSignedIn(request);
+    request.getSession().setAttribute("OAO_ADMIN_LAST_ACCESS", System.currentTimeMillis() - 43200001L);
+    assertThat(adminAuth.findCurrentAdminOrNull(request)).isNull();
+    assertThat(request.getSession().getAttribute(PersistentSessionPolicy.MEMBER_SESSION)).isEqualTo(true);
+    assertThat(request.getSession().getMaxInactiveInterval()).isEqualTo(2592000);
+    adminAuth.login(admin.getEmail(), "AdminPass1234", request);
+    db.update("update admin_user set password_hash=? where id=?", encoder.encode("ChangedPass1234"), admin.getId());
+    assertThat(adminAuth.findCurrentAdminOrNull(request)).isNull();
+  }
+
+  @Test
+  void httpsCookieIsHostOnlySecureAndKakaoLoginUsesMemberLifetime() throws Exception {
+    var request = new org.springframework.mock.web.MockHttpServletRequest();
+    request.setSecure(true);
+    request.setServerName("api.oao365.com");
+    var response = new org.springframework.mock.web.MockHttpServletResponse();
+    var principal = new KakaoPrincipal(user, "kakao-fixture", null, "테스트",
+        com.oao.backend.user.domain.UserAccount.ApprovalStatus.APPROVED,
+        com.oao.backend.user.domain.UserAccount.MemberGrade.S, Map.of(), List.of());
+    var authentication = org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(principal, null, List.of());
+    new OAuth2LoginSuccessHandler("https://www.oao365.com/oauth/success")
+        .onAuthenticationSuccess(request, response, authentication);
+    assertThat(request.getSession().getMaxInactiveInterval()).isEqualTo(2592000);
+    var cookieResponse = new org.springframework.mock.web.MockHttpServletResponse();
+    new PersistentSessionPolicy().cookieSerializer().writeCookieValue(
+        new org.springframework.session.web.http.CookieSerializer.CookieValue(request, cookieResponse, request.getSession().getId()));
+    assertThat(cookieResponse.getHeader("Set-Cookie"))
+        .contains("Secure", "HttpOnly", "SameSite=Lax", "Max-Age=2592000")
+        .doesNotContain("Domain=");
+  }
+
+  @Test
+  void administratorSessionIsPersistentAndLogoutRemovesIt() throws Exception {
+    var admin = admins.saveAndFlush(com.oao.backend.user.domain.AdminUser.createEmailAdmin(
+        address(), "테스트 관리자", "SUPER_ADMIN", encoder.encode("AdminPass1234")));
+    var cookies = new java.net.CookieManager(null, java.net.CookiePolicy.ACCEPT_ALL);
+    var client = HttpClient.newBuilder().cookieHandler(cookies).build();
+    String base = "http://localhost:" + port;
+    var login = client.send(HttpRequest.newBuilder(URI.create(base + "/admin/auth/login"))
+        .header("Origin", "http://localhost:3000").header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString("{\"email\":\"" + admin.getEmail() + "\",\"password\":\"AdminPass1234\"}"))
+        .build(), HttpResponse.BodyHandlers.ofString());
+    assertThat(login.statusCode()).isEqualTo(200);
+    assertThat(login.headers().allValues("set-cookie").toString()).contains("Max-Age=43200", "HttpOnly");
+    var check = HttpRequest.newBuilder(URI.create(base + "/admin/auth/me")).GET().build();
+    assertThat(client.send(check, HttpResponse.BodyHandlers.ofString()).body()).contains("\"admin\":true");
+    var logout = client.send(HttpRequest.newBuilder(URI.create(base + "/admin/auth/logout"))
+        .header("Origin", "http://localhost:3000").POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+    assertThat(logout.statusCode()).isEqualTo(200);
+    assertThat(logout.headers().allValues("set-cookie").toString()).contains("Max-Age=0");
+    assertThat(client.send(check, HttpResponse.BodyHandlers.ofString()).body()).contains("\"admin\":false");
+  }
+
   @Test
   void browserSessionRejectsCrossOriginMutationAndExpiresAfterReset() throws Exception {
     String address = address();

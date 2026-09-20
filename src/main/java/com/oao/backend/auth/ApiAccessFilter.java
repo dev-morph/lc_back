@@ -18,8 +18,10 @@ public class ApiAccessFilter extends OncePerRequestFilter {
   private final DevToolGuardService guard;
   private final UserAccountRepository users;
   private final Set<String> origins;
+  private final org.springframework.session.web.http.CookieSerializer cookies;
 
-  public ApiAccessFilter(DevToolGuardService guard, UserAccountRepository users, String origins) {
+  public ApiAccessFilter(DevToolGuardService guard, UserAccountRepository users, String origins, org.springframework.session.web.http.CookieSerializer cookies) {
+    this.cookies = cookies;
     this.guard = guard;
     this.users = users;
     this.origins =
@@ -65,6 +67,7 @@ public class ApiAccessFilter extends OncePerRequestFilter {
           return;
         }
       }
+      PersistentSessionPolicy.refreshCookie(req, res, cookies);
       chain.doFilter(req, res);
     } catch (BusinessException e) {
       res.setStatus(e.getStatus().value());
