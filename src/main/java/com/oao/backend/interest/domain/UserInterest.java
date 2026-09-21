@@ -58,6 +58,9 @@ public class UserInterest extends BaseTimeEntity {
 
 	public void activate(InterestType interestType, int heartCost, String expressMessage) {
 		this.status = InterestStatus.ACTIVE;
+		this.chatRoomCreated = false;
+		this.matchId = null;
+		touch();
 		updateAction(interestType, heartCost, expressMessage);
 	}
 

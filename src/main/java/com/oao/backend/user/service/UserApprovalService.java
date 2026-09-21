@@ -48,6 +48,7 @@ public class UserApprovalService {
   private final com.oao.backend.common.DbRows db;
   private final AccountSettingsService accountSettings;
   private final jakarta.persistence.EntityManager entityManager;
+  private final MinimumAgePolicy minimumAge;
 
   public UserApprovalService(
       UserAccountRepository userAccountRepository,
@@ -61,7 +62,8 @@ public class UserApprovalService {
       UserHobbyRepository userHobbyRepository,
       com.oao.backend.common.DbRows db,
       AccountSettingsService accountSettings,
-      jakarta.persistence.EntityManager entityManager) {
+      jakarta.persistence.EntityManager entityManager,
+      MinimumAgePolicy minimumAge) {
     this.userAccountRepository = userAccountRepository;
     this.userGradeHistoryRepository = userGradeHistoryRepository;
     this.userProfileRepository = userProfileRepository;
@@ -74,6 +76,7 @@ public class UserApprovalService {
     this.db = db;
     this.accountSettings = accountSettings;
     this.entityManager = entityManager;
+    this.minimumAge = minimumAge;
   }
 
   private String accountEmail(Long id, OAuthAccount oauth) {
@@ -236,6 +239,7 @@ public class UserApprovalService {
   @Transactional
   public UserAccount approve(Long userId, MemberGrade grade, Long adminId, String reason) {
     UserAccount user = findUser(userId);
+    minimumAge.requireEligible(user.getBirthDate());
     MemberGrade previousGrade = user.getGrade();
     user.approve(grade, adminId);
     userGradeHistoryRepository.save(
@@ -376,9 +380,7 @@ public class UserApprovalService {
     if (normalize(command.name()).length() < 2) {
       throw new BusinessException(HttpStatus.BAD_REQUEST, "Name must be at least 2 characters.");
     }
-    if (command.birthDate() == null || command.birthDate().isAfter(LocalDate.now())) {
-      throw new BusinessException(HttpStatus.BAD_REQUEST, "Birth date is invalid.");
-    }
+    minimumAge.requireEligible(command.birthDate());
     if (command.gender() == null) {
       throw new BusinessException(HttpStatus.BAD_REQUEST, "Gender is required.");
     }
@@ -452,9 +454,7 @@ public class UserApprovalService {
     if (normalize(command.name()).length() < 2) {
       throw new BusinessException(HttpStatus.BAD_REQUEST, "Name must be at least 2 characters.");
     }
-    if (command.birthDate() == null || command.birthDate().isAfter(LocalDate.now())) {
-      throw new BusinessException(HttpStatus.BAD_REQUEST, "Birth date is invalid.");
-    }
+    minimumAge.requireEligible(command.birthDate());
     if (command.gender() == null) {
       throw new BusinessException(HttpStatus.BAD_REQUEST, "Gender is required.");
     }

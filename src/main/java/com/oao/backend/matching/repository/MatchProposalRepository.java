@@ -11,6 +11,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MatchProposalRepository extends JpaRepository<MatchProposal, Long> {
+  @Query("select m from MatchProposal m where (m.userAId=:a and m.userBId=:b) or (m.userAId=:b and m.userBId=:a)")
+  List<MatchProposal> findPair(@Param("a") Long a, @Param("b") Long b);
+
+  @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+  @Query("select m from MatchProposal m where ((m.userAId=:a and m.userBId=:b) or (m.userAId=:b and m.userBId=:a)) order by m.id")
+  List<MatchProposal> findPairLocked(@Param("a") Long a, @Param("b") Long b);
+
   @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
   @Query("select m from MatchProposal m where m.id=:id")
   java.util.Optional<MatchProposal> findLockedById(@Param("id") Long id);

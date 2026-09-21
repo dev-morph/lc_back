@@ -25,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class UserProfileService {
 
-	private static final LocalDate MIN_BIRTH_DATE = LocalDate.of(1900, 1, 1);
 	private static final Set<String> SMOKING_STATUSES = Set.of("NON_SMOKER", "SMOKER", "OCCASIONAL");
 	private static final Set<String> DRINKING_STATUSES = Set.of("NONE", "SOCIAL", "OFTEN");
 	private static final Set<String> RELIGIONS = Set.of("NONE", "CHRISTIAN", "CATHOLIC", "BUDDHIST", "OTHER");
@@ -59,19 +58,22 @@ public class UserProfileService {
 	private final HobbyRepository hobbyRepository;
 	private final UserHobbyRepository userHobbyRepository;
 	private final JdbcTemplate jdbc;
+	private final MinimumAgePolicy minimumAge;
 
 	public UserProfileService(
 		UserAccountRepository userAccountRepository,
 		UserProfileRepository userProfileRepository,
 		HobbyRepository hobbyRepository,
 		UserHobbyRepository userHobbyRepository,
-		JdbcTemplate jdbc
+		JdbcTemplate jdbc,
+		MinimumAgePolicy minimumAge
 	) {
 		this.userAccountRepository = userAccountRepository;
 		this.userProfileRepository = userProfileRepository;
 		this.hobbyRepository = hobbyRepository;
 		this.userHobbyRepository = userHobbyRepository;
 		this.jdbc = jdbc;
+		this.minimumAge = minimumAge;
 	}
 
 	@Transactional(readOnly = true)
@@ -158,11 +160,7 @@ public class UserProfileService {
 		if (trim(command.name()).length() < 2) {
 			throw new BusinessException(HttpStatus.BAD_REQUEST, "Name must be at least 2 characters.");
 		}
-		if (command.birthDate() == null
-			|| command.birthDate().isBefore(MIN_BIRTH_DATE)
-			|| command.birthDate().isAfter(LocalDate.now())) {
-			throw new BusinessException(HttpStatus.BAD_REQUEST, "Birth date is invalid.");
-		}
+		minimumAge.requireEligible(command.birthDate());
 		if (command.gender() == null) {
 			throw new BusinessException(HttpStatus.BAD_REQUEST, "Gender is required.");
 		}
@@ -193,8 +191,7 @@ public class UserProfileService {
 		return trim(user.getName()).length() >= 2
 			&& user.getBirthDate() != null
 			&& user.getGender() != null
-			&& !user.getBirthDate().isBefore(MIN_BIRTH_DATE)
-			&& !user.getBirthDate().isAfter(LocalDate.now())
+			&& minimumAge.eligible(user.getBirthDate())
 			&& profile != null
 			&& profile.getHeightCm() != null
 			&& profile.getHeightCm() >= 120

@@ -12,8 +12,6 @@ import com.oao.backend.interest.domain.UserInterest.ExpressDecision;
 import com.oao.backend.interest.domain.UserInterest.InterestStatus;
 import com.oao.backend.interest.domain.UserInterest.InterestType;
 import com.oao.backend.interest.repository.UserInterestRepository;
-import com.oao.backend.matching.domain.MatchProposal;
-import com.oao.backend.matching.repository.MatchProposalRepository;
 import com.oao.backend.matching.repository.MatchingProfileRepository;
 import com.oao.backend.notification.service.AppNotificationService;
 import com.oao.backend.user.domain.ProfilePhoto;
@@ -42,6 +40,8 @@ public class UserInterestService {
   @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
   private final com.oao.backend.matching.service.MatchingPolicyService matchingPolicy;
   private final com.oao.backend.common.UserLocks userLocks;
+  private final com.oao.backend.matching.service.MatchConnectionService connections;
+  private final InterestConsentPolicy consent;
 
   private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
   private static final int PRIVATE_ACCEPT_HEART_COST = 4;
@@ -57,13 +57,14 @@ public class UserInterestService {
   private final MatchingProfileRepository matchingProfileRepository;
   private final HeartWalletRepository heartWalletRepository;
   private final HeartTransactionRepository heartTransactionRepository;
-  private final MatchProposalRepository matchProposalRepository;
   private final ChatRoomRepository chatRoomRepository;
   private final AppNotificationService notificationService;
 
   public UserInterestService(
       com.oao.backend.matching.service.MatchingPolicyService matchingPolicy,
       com.oao.backend.common.UserLocks userLocks,
+      com.oao.backend.matching.service.MatchConnectionService connections,
+      InterestConsentPolicy consent,
       UserInterestRepository interestRepository,
       UserAccountRepository userAccountRepository,
       UserProfileRepository userProfileRepository,
@@ -73,11 +74,12 @@ public class UserInterestService {
       MatchingProfileRepository matchingProfileRepository,
       HeartWalletRepository heartWalletRepository,
       HeartTransactionRepository heartTransactionRepository,
-      MatchProposalRepository matchProposalRepository,
       ChatRoomRepository chatRoomRepository,
       AppNotificationService notificationService) {
     this.matchingPolicy = matchingPolicy;
     this.userLocks = userLocks;
+    this.connections = connections;
+    this.consent = consent;
     this.interestRepository = interestRepository;
     this.userAccountRepository = userAccountRepository;
     this.userProfileRepository = userProfileRepository;
@@ -87,7 +89,6 @@ public class UserInterestService {
     this.matchingProfileRepository = matchingProfileRepository;
     this.heartWalletRepository = heartWalletRepository;
     this.heartTransactionRepository = heartTransactionRepository;
-    this.matchProposalRepository = matchProposalRepository;
     this.chatRoomRepository = chatRoomRepository;
     this.notificationService = notificationService;
   }
@@ -135,6 +136,12 @@ public class UserInterestService {
       throw new BusinessException(HttpStatus.NOT_FOUND, "Receiver user not found.");
     }
 
+    var activeRoom = connections.activeRoom(senderUserId, receiverUserId);
+    if (activeRoom != null) {
+      connections.connect(senderUserId, receiverUserId, "서로 수락했어요.");
+      return new InterestActionResult(null, 0, currentBalance(senderUserId), false,
+          activeRoom.getMatchId(), activeRoom.getId());
+    }
     int heartCost = heartCost(interestType);
     String expressMessage = normalizeExpressMessage(interestType, message);
     UserInterest interest =
@@ -147,15 +154,15 @@ public class UserInterestService {
             .orElseGet(() -> heartWalletRepository.save(HeartWallet.create(senderUserId)));
 
     if (interest != null
-        && interest.getStatus() == InterestStatus.ACTIVE
+        && consent.active(interest)
         && interest.getInterestType() == interestType) {
       boolean chatRoomCreated =
-          interestType == InterestType.LIKE && maybeOpenMutualLikeChatRoom(interest);
+          maybeOpenMutualInterestChatRoom(interest);
       return new InterestActionResult(
           toProfileView(interest, receiverUserId), 0, wallet.getBalance(), chatRoomCreated);
     }
     if (interest != null
-        && interest.getStatus() == InterestStatus.ACTIVE
+        && consent.active(interest)
         && interest.getInterestType() == InterestType.EXPRESS
         && interestType == InterestType.LIKE) {
       return new InterestActionResult(
@@ -173,8 +180,9 @@ public class UserInterestService {
       interest.activate(interestType, heartCost, expressMessage);
     }
 
+    entityManager.flush();
     boolean chatRoomCreated =
-        interestType == InterestType.LIKE && maybeOpenMutualLikeChatRoom(interest);
+        maybeOpenMutualInterestChatRoom(interest);
     heartTransactionRepository.save(
         HeartTransaction.spend(
             senderUserId,
@@ -182,7 +190,7 @@ public class UserInterestService {
             wallet.getBalance(),
             interestType == InterestType.LIKE ? "INTEREST_LIKE" : "INTEREST_EXPRESS",
             interest.getId()));
-    if (interestType == InterestType.EXPRESS) {
+    if (interestType == InterestType.EXPRESS && !interest.isChatRoomCreated()) {
       notificationService.notifyExpressReceived(interest.getId(), receiverUserId, senderUserId);
     }
     return new InterestActionResult(
@@ -195,6 +203,7 @@ public class UserInterestService {
     userLocks.pair(interest.getSenderUserId(), interest.getReceiverUserId());
     entityManager.refresh(interest, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
     matchingPolicy.requirePair(interest.getSenderUserId(), interest.getReceiverUserId());
+    matchingPolicy.requireConnectionAge(interest.getSenderUserId(), interest.getReceiverUserId());
     if (!interest.getReceiverUserId().equals(receiverUserId)) {
       throw new BusinessException(
           HttpStatus.FORBIDDEN, "Only receiver can accept express interest.");
@@ -202,6 +211,8 @@ public class UserInterestService {
     if (interest.getInterestType() != InterestType.EXPRESS) {
       throw new BusinessException(HttpStatus.BAD_REQUEST, "Only express interest can be accepted.");
     }
+    if (!interest.isChatRoomCreated() && !validIntent(interest))
+      throw new BusinessException(HttpStatus.CONFLICT, "이미 종료된 수락이에요.");
     interest.acceptExpress();
     boolean chatRoomCreated = openInterestChatRoom(interest, "공개 수락을 받아들였어요.");
     return new InterestActionResult(
@@ -224,6 +235,8 @@ public class UserInterestService {
     if (interest.getInterestType() != InterestType.EXPRESS) {
       throw new BusinessException(HttpStatus.BAD_REQUEST, "Only express interest can be rejected.");
     }
+    if (interest.isChatRoomCreated())
+      throw new BusinessException(HttpStatus.CONFLICT, "이미 연결된 대화예요. 대화방에서 나가기를 이용해주세요.");
     interest.rejectExpress();
     return new InterestActionResult(
         toProfileView(interest, interest.getSenderUserId()),
@@ -267,8 +280,8 @@ public class UserInterestService {
             .map(matchingProfile -> matchingProfile.getJobIntro())
             .orElse(null);
     return new InterestProfileDetailView(
-        null,
-        "INTEREST",
+        contextInterest.getMatchId(),
+        contextInterest.isChatRoomCreated() ? "ACCEPTED" : "INTEREST",
         "NONE",
         "NONE",
         null,
@@ -301,15 +314,14 @@ public class UserInterestService {
         contextInterest.isNotificationTarget(),
         contextInterest.getExpressDecision().name(),
         contextInterest.isChatRoomCreated(),
-        incomingInterest != null,
+        incomingInterest != null && consent.active(incomingInterest),
         incomingInterest != null && incomingInterest.getInterestType() == InterestType.EXPRESS
             ? incomingInterest.getExpressMessage()
             : null);
   }
 
   private boolean isVisiblePendingInterest(UserInterest interest) {
-    return !interest.isChatRoomCreated()
-        && interest.getExpressDecision() != ExpressDecision.REJECTED;
+    return consent.active(interest);
   }
 
   private List<InterestHobbyView> hobbyViews(Long userId, Long profileUserId) {
@@ -360,67 +372,28 @@ public class UserInterestService {
     return normalized.isBlank() ? null : normalized;
   }
 
-  private boolean maybeOpenMutualLikeChatRoom(UserInterest interest) {
-    return interestRepository
-        .findBySenderUserIdAndReceiverUserIdAndStatusAndInterestType(
-            interest.getReceiverUserId(),
-            interest.getSenderUserId(),
-            InterestStatus.ACTIVE,
-            InterestType.LIKE)
-        .map(
-            reverseInterest ->
-                openMutualInterestChatRoom(interest, reverseInterest, "서로 관심을 표현했어요."))
+  private boolean maybeOpenMutualInterestChatRoom(UserInterest interest) {
+    if (!validIntent(interest)) return false;
+    return interestRepository.findBySenderUserIdAndReceiverUserIdAndStatus(
+        interest.getReceiverUserId(), interest.getSenderUserId(), InterestStatus.ACTIVE)
+        .filter(this::validIntent)
+        .map(reverse -> openInterestChatRoom(interest, "서로 관심을 표현했어요."))
         .orElse(false);
   }
 
-  private boolean openInterestChatRoom(UserInterest interest, String reason) {
-    if (interest.isChatRoomCreated()) {
-      return false;
-    }
-    Instant now = Instant.now();
-    MatchProposal proposal =
-        matchProposalRepository.save(
-            MatchProposal.createAcceptedInterest(
-                interest.getSenderUserId(),
-                interest.getReceiverUserId(),
-                interest.getSenderUserId(),
-                reason,
-                now));
-    if (!chatRoomRepository.existsByMatchId(proposal.getId())) {
-      chatRoomRepository.save(ChatRoom.open(proposal.getId()));
-      interest.markChatRoomCreated(proposal.getId());
-      notificationService.notifyMatchCompleted(
-          proposal.getId(), interest.getSenderUserId(), interest.getReceiverUserId());
-      return true;
-    }
-    interest.markChatRoomCreated(proposal.getId());
-    notificationService.notifyMatchCompleted(
-        proposal.getId(), interest.getSenderUserId(), interest.getReceiverUserId());
-    return false;
+  private boolean validIntent(UserInterest interest) {
+    return consent.active(interest);
   }
 
-  private boolean openMutualInterestChatRoom(
-      UserInterest interest, UserInterest reverseInterest, String reason) {
-    if (interest.isChatRoomCreated() || reverseInterest.isChatRoomCreated()) {
-      return false;
-    }
-    Instant now = Instant.now();
-    MatchProposal proposal =
-        matchProposalRepository.save(
-            MatchProposal.createAcceptedInterest(
-                interest.getSenderUserId(),
-                interest.getReceiverUserId(),
-                interest.getSenderUserId(),
-                reason,
-                now));
-    if (!chatRoomRepository.existsByMatchId(proposal.getId())) {
-      chatRoomRepository.save(ChatRoom.open(proposal.getId()));
-    }
-    interest.markChatRoomCreated(proposal.getId());
-    reverseInterest.markChatRoomCreated(proposal.getId());
-    notificationService.notifyMatchCompleted(
-        proposal.getId(), interest.getSenderUserId(), interest.getReceiverUserId());
-    return true;
+  private boolean openInterestChatRoom(UserInterest interest, String reason) {
+    if (interest.isChatRoomCreated()) return false;
+    var connected = connections.connect(interest.getSenderUserId(), interest.getReceiverUserId(), reason);
+    interest.markChatRoomCreated(connected.matchId());
+    interestRepository.findBySenderUserIdAndReceiverUserIdAndStatus(
+        interest.getReceiverUserId(), interest.getSenderUserId(), InterestStatus.ACTIVE)
+        .filter(reverse -> reverse.getExpressDecision() != ExpressDecision.REJECTED)
+        .ifPresent(reverse -> reverse.markChatRoomCreated(connected.matchId()));
+    return connected.created();
   }
 
   private int currentBalance(Long userId) {
@@ -453,7 +426,8 @@ public class UserInterestService {
         interest.getHeartCost(),
         interest.isNotificationTarget(),
         interest.getExpressDecision().name(),
-        interest.isChatRoomCreated());
+        interest.isChatRoomCreated(), interest.getMatchId(),
+        interest.getMatchId() == null ? null : chatRoomRepository.findByMatchId(interest.getMatchId()).map(ChatRoom::getId).orElse(null));
   }
 
   private Integer age(LocalDate birthDate) {
@@ -478,10 +452,17 @@ public class UserInterestService {
       int heartCost,
       boolean notificationTarget,
       String expressDecision,
-      boolean chatRoomCreated) {}
+      boolean chatRoomCreated,
+      Long matchId,
+      Long chatRoomId) {}
 
   public record InterestActionResult(
-      InterestProfileView profile, int spentHearts, int remainingHearts, boolean chatRoomCreated) {}
+      InterestProfileView profile, int spentHearts, int remainingHearts, boolean chatRoomCreated,
+      Long matchId, Long chatRoomId) {
+    public InterestActionResult(InterestProfileView profile, int spentHearts, int remainingHearts, boolean created) {
+      this(profile, spentHearts, remainingHearts, created, profile.matchId(), profile.chatRoomId());
+    }
+  }
 
   public record InterestProfileDetailView(
       Long matchId,

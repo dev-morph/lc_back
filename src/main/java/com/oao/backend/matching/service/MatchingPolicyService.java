@@ -13,15 +13,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class MatchingPolicyService {
   private final DbRows db;
   private final ModerationService moderation;
+  private final com.oao.backend.user.service.MinimumAgePolicy minimumAge;
   private final int interval, guarantee;
 
   public MatchingPolicyService(
       DbRows db,
       ModerationService moderation,
+      com.oao.backend.user.service.MinimumAgePolicy minimumAge,
       @Value("${oao.matching.auto-match-interval-hours:48}") int interval,
       @Value("${oao.matching.s-grade-guaranteed-auto-match-count:2}") int guarantee) {
     this.db = db;
     this.moderation = moderation;
+    this.minimumAge = minimumAge;
     this.interval = interval;
     this.guarantee = guarantee;
   }
@@ -31,8 +34,8 @@ public class MatchingPolicyService {
                 "select count(*) from matching_profile m join user_profile p on p.user_id=m.user_id"
                     + " join user_account u on u.id=m.user_id where u.status='ACTIVE' and"
                     + " u.approval_status='APPROVED' and m.user_id=? and m.matching_enabled=true"
-                    + " and p.phone_verified_at is not null",
-                id)
+                    + " and p.phone_verified_at is not null and u.birth_date between ? and ?",
+                id, LocalDate.of(1900, 1, 1), minimumAge.latestBirthDate())
             > 0
         && db.count(
                 "select count(*) from profile_photo where user_id=? and review_status='APPROVED'",
@@ -71,6 +74,13 @@ public class MatchingPolicyService {
 
   public void lockRun() {
     db.jdbc.queryForList("select id from matching_run_lock where id=1 for update");
+  }
+
+  public void requireConnectionAge(Long a, Long b) {
+    if (db.count("select count(*) from user_account where id in (?,?) and birth_date between ? and ?",
+        a, b, LocalDate.of(1900, 1, 1), minimumAge.latestBirthDate()) != 2)
+      throw new BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST,
+          "만 19세 이상으로 확인된 회원만 연결할 수 있어요.");
   }
 
   @Scheduled(fixedDelay = 60000, initialDelay = 60000)

@@ -43,6 +43,7 @@ public class MatchReadService {
   private final UserHobbyRepository userHobbyRepository;
   private final HobbyRepository hobbyRepository;
   private final UserInterestRepository userInterestRepository;
+  private final com.oao.backend.interest.service.InterestConsentPolicy consent;
 
   public MatchReadService(
       com.oao.backend.matching.service.MatchingPolicyService matchingPolicy,
@@ -53,7 +54,8 @@ public class MatchReadService {
       ProfilePhotoRepository profilePhotoRepository,
       UserHobbyRepository userHobbyRepository,
       HobbyRepository hobbyRepository,
-      UserInterestRepository userInterestRepository) {
+      UserInterestRepository userInterestRepository,
+      com.oao.backend.interest.service.InterestConsentPolicy consent) {
     this.matchingPolicy = matchingPolicy;
     this.matchProposalRepository = matchProposalRepository;
     this.userAccountRepository = userAccountRepository;
@@ -63,6 +65,7 @@ public class MatchReadService {
     this.userHobbyRepository = userHobbyRepository;
     this.hobbyRepository = hobbyRepository;
     this.userInterestRepository = userInterestRepository;
+    this.consent = consent;
   }
 
   @Transactional(readOnly = true)
@@ -169,8 +172,8 @@ public class MatchReadService {
 
   private boolean hasActiveInterest(
       Long senderUserId, Long receiverUserId, InterestType interestType) {
-    return userInterestRepository.existsBySenderUserIdAndReceiverUserIdAndStatusAndInterestType(
-        senderUserId, receiverUserId, InterestStatus.ACTIVE, interestType);
+    return userInterestRepository.findBySenderUserIdAndReceiverUserIdAndStatusAndInterestType(
+        senderUserId, receiverUserId, InterestStatus.ACTIVE, interestType).filter(consent::active).isPresent();
   }
 
   private List<MatchHobbyView> hobbyViews(Long userId, Long counterpartUserId) {

@@ -35,6 +35,7 @@ public class UserAccount extends BaseTimeEntity {
   @Enumerated(EnumType.STRING)
   private Gender gender;
 
+  @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.LOCAL_DATE)
   private LocalDate birthDate;
   private Instant approvedAt;
   private Long approvedByAdminId;
