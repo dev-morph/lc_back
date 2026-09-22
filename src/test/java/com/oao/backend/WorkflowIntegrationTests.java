@@ -747,9 +747,10 @@ class WorkflowIntegrationTests {
 
   @Test
   void matchingPreferenceDoesNotBypassProfileEligibility() {
-    settings.update(user, true, null, List.of(), false, true);
+    settings.update(user, null, null, List.of(), false, true);
     assertThat(settings.settings(user).get("matchingEnabled")).isEqualTo(true);
     assertThat(policy.eligible(user)).isFalse();
+    assertThatThrownBy(() -> settings.setMatchingEnabled(user, true)).isInstanceOf(BusinessException.class);
     db.update("delete from matching_profile where user_id=?", user);
     eligible(user);
     settings.update(user, true, "함께 성장", List.of("다정함", "성실함", "유머"), false, true);
@@ -790,7 +791,7 @@ class WorkflowIntegrationTests {
         new byte[] {(byte) 137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0});
     profilePhotos.saveIntroPhoto(user, "함께 즐거운 시간을 보내고 싶어요.", List.of(photo, photo), null);
     assertThat(settings.settings(user).get("matchingEnabled")).isEqualTo(true);
-    settings.update(user, true, null, null, false, true);
+    settings.update(user, null, null, null, false, true);
     assertThat(policy.eligible(user)).isFalse();
     db.update("insert into user_profile(user_id,phone_verified_at,created_at,updated_at) values (?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", user);
     db.update("update user_account set approval_status='APPROVED' where id=?", user);
@@ -808,13 +809,13 @@ class WorkflowIntegrationTests {
     settings.update(user, false, "함께 성장", List.of("다정한", "솔직한", "활동적인"), false, false);
     settings.updateMatchingDetails(user, "서로 응원하는 연애", null);
     assertThat(settings.matchingDetails(user).get("personalityKeywords")).isEqualTo("다정한,솔직한,활동적인");
-    settings.updateMatchingDetails(user, null, List.of(" 다정한 ", "다정한", "긍정적인"));
+    settings.updateMatchingDetails(user, null, List.of(" 다정한 ", "다정한", "긍정적인", "차분한"));
     assertThat(settings.matchingDetails(user).get("datingStyle")).isEqualTo("서로 응원하는 연애");
     assertThat(settings.settings(user)).containsEntry("matchingEnabled", false)
         .containsEntry("alimtalkEnabled", false).containsEntry("messageNotifications", false);
     settings.update(user, true, null, null, true, false);
     assertThat(settings.matchingDetails(user)).containsEntry("datingStyle", "서로 응원하는 연애")
-        .containsEntry("personalityKeywords", "다정한,긍정적인");
+        .containsEntry("personalityKeywords", "다정한,긍정적인,차분한");
     assertThatThrownBy(() -> settings.updateMatchingDetails(user, "a".repeat(1001), null))
         .isInstanceOf(BusinessException.class);
     assertThatThrownBy(() -> settings.updateMatchingDetails(user, "저장되면 안 되는 값", List.of("하나", "둘", "셋", "넷")))
@@ -822,6 +823,28 @@ class WorkflowIntegrationTests {
     assertThat(settings.matchingDetails(user).get("datingStyle")).isEqualTo("서로 응원하는 연애");
     settings.updateMatchingDetails(user, "", List.of());
     assertThat(settings.matchingDetails(user)).containsEntry("datingStyle", "").containsEntry("personalityKeywords", "");
+  }
+
+  @Test
+  void automaticMatchingNeedsRelationshipDetailsEvenWithDefaultPreferenceOn() {
+    db.update("update matching_profile set matching_enabled=false");
+    eligible(user);
+    eligible(other);
+    db.update("update matching_profile set dating_style=null,personality_keywords=null where user_id=?", user);
+    assertThat(settings.settings(user)).containsEntry("matchingEnabled", true).containsEntry("matchingProfileComplete", false);
+    assertThat(autoMatching.runAutoMatching().createdCount()).isZero();
+    assertThatThrownBy(() -> settings.setMatchingEnabled(user, true)).isInstanceOf(BusinessException.class);
+    settings.updateMatchingDetails(user, "서로 응원하는 연애", List.of("다정한", "솔직한"));
+    assertThatThrownBy(() -> settings.setMatchingEnabled(user, true)).isInstanceOf(BusinessException.class);
+    settings.updateMatchingDetails(user, null, List.of("다정한", "솔직한", "차분한"));
+    assertThat(settings.setMatchingEnabled(user, true)).containsEntry("matchingEnabled", true).containsEntry("matchingProfileComplete", true);
+    assertThat(autoMatching.runAutoMatching().createdCount()).isEqualTo(1);
+    settings.setMatchingEnabled(user, false);
+    settings.update(user, null, null, null, false, false);
+    assertThat(settings.settings(user)).containsEntry("matchingEnabled", false).containsEntry("alimtalkEnabled", false);
+    settings.updateMatchingDetails(user, "", null);
+    assertThatThrownBy(() -> settings.update(user, true, null, null, true, true)).isInstanceOf(BusinessException.class);
+    assertThat(settings.settings(user)).containsEntry("matchingEnabled", false);
   }
 
   @Test

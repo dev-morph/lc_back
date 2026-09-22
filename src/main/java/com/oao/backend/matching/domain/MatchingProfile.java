@@ -85,6 +85,14 @@ public class MatchingProfile extends BaseTimeEntity {
     return matchingEnabled;
   }
 
+  public static boolean hasRequiredMatchingDetails(String style, String keywords) {
+    if (style == null || style.isBlank() || style.trim().length() > 1000 || keywords == null)
+      return false;
+    var values = java.util.Arrays.stream(keywords.split(",")).map(String::trim).filter(v -> !v.isBlank()).toList();
+    return values.size() == 3 && new java.util.HashSet<>(values).size() == 3
+        && values.stream().allMatch(v -> v.length() <= 30);
+  }
+
   public Instant getLastAutoMatchedAt() {
     return lastAutoMatchedAt;
   }

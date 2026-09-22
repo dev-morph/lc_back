@@ -65,6 +65,7 @@ public class AutoMatchingService {
         userAccountRepository.findAll().stream()
             .map(matchingCandidateService::toCandidate)
             .flatMap(optional -> optional.stream())
+            .filter(candidate -> matchingPolicy.hasRequiredMatchingDetails(candidate.userId()))
             .filter(candidate -> matchingPolicy.due(candidate.userId()))
             .sorted(Comparator.comparing(MatchingCandidate::userId))
             .toList();

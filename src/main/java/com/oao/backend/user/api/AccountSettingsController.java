@@ -52,7 +52,7 @@ public class AccountSettingsController {
   }
 
   record Settings(
-      boolean matchingEnabled,
+      Boolean matchingEnabled,
       @Size(max = 1000) String datingStyle,
       @Size(max = 3) List<@NotBlank @Size(max = 30) String> keywords,
       boolean alimtalkEnabled,
@@ -71,4 +71,11 @@ public class AccountSettingsController {
   record MatchingDetails(
       @Size(max = 1000) String datingStyle,
       @Size(max = 3) List<@NotBlank @Size(max = 30) String> keywords) {}
+
+  @PatchMapping("/me/settings/matching")
+  ApiResponse<?> setMatchingEnabled(HttpServletRequest req, @Valid @RequestBody MatchingPreference input) {
+    return ApiResponse.ok(settings.setMatchingEnabled(current.require(req), input.matchingEnabled()));
+  }
+
+  record MatchingPreference(@NotNull Boolean matchingEnabled) {}
 }

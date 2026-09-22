@@ -52,6 +52,12 @@ public class MatchingPolicyService {
         > 0;
   }
 
+  public boolean hasRequiredMatchingDetails(Long id) {
+    var rows = db.list("select dating_style,personality_keywords from matching_profile where user_id=?", id);
+    return !rows.isEmpty() && com.oao.backend.matching.domain.MatchingProfile.hasRequiredMatchingDetails(
+        (String) rows.getFirst().get("datingStyle"), (String) rows.getFirst().get("personalityKeywords"));
+  }
+
   public boolean needsGuarantee(Long id) {
     return db.count(
             "select count(*) from matching_profile where user_id=? and"

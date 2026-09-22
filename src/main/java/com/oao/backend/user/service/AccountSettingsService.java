@@ -33,6 +33,7 @@ public class AccountSettingsService {
             id);
     if (!matching.isEmpty()) row.putAll(matching.get(0));
     else row.put("matchingEnabled", true);
+    row.put("matchingProfileComplete", completeMatchingDetails(row));
     var pref =
         db.list(
             "select alimtalk_enabled,message_notifications from user_preferences where user_id=?",
@@ -50,7 +51,7 @@ public class AccountSettingsService {
   @Transactional
   public void update(
       Long id,
-      boolean enabled,
+      Boolean enabled,
       String style,
       List<String> keywords,
       boolean alimtalk,
@@ -58,14 +59,9 @@ public class AccountSettingsService {
     db.jdbc.queryForList("select id from user_account where id=? for update", id);
     // This records the member's preference. MatchingPolicyService and
     // MatchingCandidateService enforce approval, age, phone, photos and profile readiness.
-    ensureMatchingProfile(id, enabled);
-    db.jdbc.update(
-        "update matching_profile set"
-            + " matching_enabled=?,updated_at=CURRENT_TIMESTAMP"
-            + " where user_id=?",
-        enabled,
-        id);
+    ensureMatchingProfile(id, enabled == null || enabled);
     updateMatchingDetails(id, style, keywords);
+    if (enabled != null) updateMatchingPreference(id, enabled);
     if (db.count("select count(*) from user_preferences where user_id=?", id) == 0)
       db.jdbc.update(
           "insert into user_preferences(user_id,alimtalk_enabled,message_notifications,updated_at)"
@@ -115,6 +111,25 @@ public class AccountSettingsService {
           "insert into matching_profile(user_id,matching_enabled,auto_match_count,s_grade_guaranteed_match_count,no_response_count,created_at,updated_at)"
               + " values (?,?,0,0,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
           id, enabled);
+  }
+
+  private boolean completeMatchingDetails(Map<String, Object> details) {
+    return com.oao.backend.matching.domain.MatchingProfile.hasRequiredMatchingDetails(
+        (String) details.get("datingStyle"), (String) details.get("personalityKeywords"));
+  }
+
+  @Transactional
+  public Map<String, Object> setMatchingEnabled(Long id, boolean enabled) {
+    db.jdbc.queryForList("select id from user_account where id=? for update", id);
+    ensureMatchingProfile(id, true);
+    updateMatchingPreference(id, enabled);
+    return settings(id);
+  }
+
+  private void updateMatchingPreference(Long id, boolean enabled) {
+    if (enabled && !completeMatchingDetails(matchingDetails(id)))
+      throw bad("자동 소개를 받으려면 연애 스타일과 성격 키워드 3개를 입력해주세요.");
+    db.jdbc.update("update matching_profile set matching_enabled=?,updated_at=CURRENT_TIMESTAMP where user_id=?", enabled, id);
   }
 
   @Transactional
