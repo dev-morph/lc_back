@@ -746,10 +746,11 @@ class WorkflowIntegrationTests {
   }
 
   @Test
-  void settingsCannotEnableAnIncompleteProfile() {
-    assertThatThrownBy(
-            () -> settings.update(user, true, "함께 성장", List.of("다정함", "성실함", "유머"), false, true))
-        .isInstanceOf(BusinessException.class);
+  void matchingPreferenceDoesNotBypassProfileEligibility() {
+    settings.update(user, true, null, List.of(), false, true);
+    assertThat(settings.settings(user).get("matchingEnabled")).isEqualTo(true);
+    assertThat(policy.eligible(user)).isFalse();
+    db.update("delete from matching_profile where user_id=?", user);
     eligible(user);
     settings.update(user, true, "함께 성장", List.of("다정함", "성실함", "유머"), false, true);
     assertThat(settings.settings(user).get("personalityKeywords")).isEqualTo("다정함,성실함,유머");
@@ -778,6 +779,49 @@ class WorkflowIntegrationTests {
                     HttpResponse.BodyHandlers.ofString())
                 .statusCode())
         .isEqualTo(403);
+  }
+
+  @Test
+  void newMatchingPreferenceSurvivesFirstPhotosButApprovalStillGatesMatching() {
+    db.update("update user_account set approval_status='PENDING' where id=?", user);
+    assertThat(settings.settings(user).get("matchingEnabled")).isEqualTo(true);
+    assertThat(com.oao.backend.matching.domain.MatchingProfile.create(user).isMatchingEnabled()).isTrue();
+    var photo = new MockMultipartFile("photos", "profile.png", "image/png",
+        new byte[] {(byte) 137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0});
+    profilePhotos.saveIntroPhoto(user, "함께 즐거운 시간을 보내고 싶어요.", List.of(photo, photo), null);
+    assertThat(settings.settings(user).get("matchingEnabled")).isEqualTo(true);
+    settings.update(user, true, null, null, false, true);
+    assertThat(policy.eligible(user)).isFalse();
+    db.update("insert into user_profile(user_id,phone_verified_at,created_at,updated_at) values (?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", user);
+    db.update("update user_account set approval_status='APPROVED' where id=?", user);
+    assertThat(policy.eligible(user)).isFalse();
+    db.update("update profile_photo set review_status='APPROVED' where user_id=?", user);
+    assertThat(policy.eligible(user)).isTrue();
+
+    settings.update(other, false, null, null, true, true);
+    profilePhotos.saveIntroPhoto(other, "함께 즐거운 시간을 보내고 싶어요.", List.of(photo, photo), null);
+    assertThat(settings.settings(other).get("matchingEnabled")).isEqualTo(false);
+  }
+
+  @Test
+  void profileMatchingDetailsAndAccountPreferencesDoNotOverwriteEachOther() {
+    settings.update(user, false, "함께 성장", List.of("다정한", "솔직한", "활동적인"), false, false);
+    settings.updateMatchingDetails(user, "서로 응원하는 연애", null);
+    assertThat(settings.matchingDetails(user).get("personalityKeywords")).isEqualTo("다정한,솔직한,활동적인");
+    settings.updateMatchingDetails(user, null, List.of(" 다정한 ", "다정한", "긍정적인"));
+    assertThat(settings.matchingDetails(user).get("datingStyle")).isEqualTo("서로 응원하는 연애");
+    assertThat(settings.settings(user)).containsEntry("matchingEnabled", false)
+        .containsEntry("alimtalkEnabled", false).containsEntry("messageNotifications", false);
+    settings.update(user, true, null, null, true, false);
+    assertThat(settings.matchingDetails(user)).containsEntry("datingStyle", "서로 응원하는 연애")
+        .containsEntry("personalityKeywords", "다정한,긍정적인");
+    assertThatThrownBy(() -> settings.updateMatchingDetails(user, "a".repeat(1001), null))
+        .isInstanceOf(BusinessException.class);
+    assertThatThrownBy(() -> settings.updateMatchingDetails(user, "저장되면 안 되는 값", List.of("하나", "둘", "셋", "넷")))
+        .isInstanceOf(BusinessException.class);
+    assertThat(settings.matchingDetails(user).get("datingStyle")).isEqualTo("서로 응원하는 연애");
+    settings.updateMatchingDetails(user, "", List.of());
+    assertThat(settings.matchingDetails(user)).containsEntry("datingStyle", "").containsEntry("personalityKeywords", "");
   }
 
   @Test

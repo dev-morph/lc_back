@@ -42,7 +42,7 @@ public class MatchingProfile extends BaseTimeEntity {
   public static MatchingProfile create(Long userId) {
     MatchingProfile profile = new MatchingProfile();
     profile.userId = userId;
-    profile.matchingEnabled = false;
+    profile.matchingEnabled = true;
     profile.autoMatchCount = 0;
     profile.sGradeGuaranteedMatchCount = 0;
     profile.noResponseCount = 0;

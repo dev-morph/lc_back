@@ -32,7 +32,7 @@ public class AccountSettingsService {
                 + " matching_profile where user_id=?",
             id);
     if (!matching.isEmpty()) row.putAll(matching.get(0));
-    else row.put("matchingEnabled", false);
+    else row.put("matchingEnabled", true);
     var pref =
         db.list(
             "select alimtalk_enabled,message_notifications from user_preferences where user_id=?",
@@ -56,46 +56,16 @@ public class AccountSettingsService {
       boolean alimtalk,
       boolean messages) {
     db.jdbc.queryForList("select id from user_account where id=? for update", id);
-    List<String> unique =
-        keywords == null
-            ? List.of()
-            : keywords.stream()
-                .map(k -> k == null ? "" : k.trim())
-                .filter(k -> !k.isBlank())
-                .distinct()
-                .toList();
-    if (unique.size() > 3 || unique.stream().anyMatch(k -> k.length() > 30 || k.contains(",")))
-      throw bad("성격 키워드는 각 30자 이하로 최대 3개 입력해주세요.");
-    if (enabled) {
-      if (db.count(
-              "select count(*) from user_account where id=? and approval_status='APPROVED' and"
-                  + " status='ACTIVE'",
-              id)
-          == 0) throw bad("가입 심사 승인 후 매칭을 켤 수 있습니다.");
-      if (db.count(
-              "select count(*) from user_profile where user_id=? and phone_verified_at is not null",
-              id)
-          == 0) throw bad("휴대폰 인증을 먼저 완료해주세요.");
-      if (db.count(
-              "select count(*) from profile_photo where user_id=? and review_status='APPROVED'", id)
-          < 2) throw bad("승인된 프로필 사진이 2장 이상 필요합니다.");
-      if (unique.size() != 3 || style == null || style.isBlank())
-        throw bad("연애 스타일과 성격 키워드 3개를 입력해주세요.");
-    }
-    if (db.count("select count(*) from matching_profile where user_id=?", id) == 0)
-      db.jdbc.update(
-          "insert into"
-              + " matching_profile(user_id,matching_enabled,auto_match_count,s_grade_guaranteed_match_count,no_response_count,created_at,updated_at)"
-              + " values (?,false,0,0,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
-          id);
+    // This records the member's preference. MatchingPolicyService and
+    // MatchingCandidateService enforce approval, age, phone, photos and profile readiness.
+    ensureMatchingProfile(id, enabled);
     db.jdbc.update(
         "update matching_profile set"
-            + " matching_enabled=?,dating_style=?,personality_keywords=?,updated_at=CURRENT_TIMESTAMP"
+            + " matching_enabled=?,updated_at=CURRENT_TIMESTAMP"
             + " where user_id=?",
         enabled,
-        style,
-        String.join(",", unique),
         id);
+    updateMatchingDetails(id, style, keywords);
     if (db.count("select count(*) from user_preferences where user_id=?", id) == 0)
       db.jdbc.update(
           "insert into user_preferences(user_id,alimtalk_enabled,message_notifications,updated_at)"
@@ -111,6 +81,40 @@ public class AccountSettingsService {
           alimtalk,
           messages,
           id);
+  }
+
+  public Map<String, Object> matchingDetails(Long id) {
+    var rows = db.list("select dating_style,personality_keywords from matching_profile where user_id=?", id);
+    if (!rows.isEmpty()) return rows.getFirst();
+    Map<String, Object> empty = new LinkedHashMap<>();
+    empty.put("datingStyle", null);
+    empty.put("personalityKeywords", null);
+    return empty;
+  }
+
+  @Transactional
+  public Map<String, Object> updateMatchingDetails(Long id, String style, List<String> keywords) {
+    db.jdbc.queryForList("select id from user_account where id=? for update", id);
+    ensureMatchingProfile(id, true);
+    if (style != null) {
+      if (style.length() > 1000) throw bad("연애 스타일은 1,000자 이하로 입력해주세요.");
+      db.jdbc.update("update matching_profile set dating_style=?,updated_at=CURRENT_TIMESTAMP where user_id=?", style.trim(), id);
+    }
+    if (keywords != null) {
+      var unique = keywords.stream().map(k -> k == null ? "" : k.trim()).filter(k -> !k.isBlank()).distinct().toList();
+      if (unique.size() > 3 || unique.stream().anyMatch(k -> k.length() > 30 || k.contains(",")))
+        throw bad("성격 키워드는 각 30자 이하로 최대 3개 입력해주세요.");
+      db.jdbc.update("update matching_profile set personality_keywords=?,updated_at=CURRENT_TIMESTAMP where user_id=?", String.join(",", unique), id);
+    }
+    return matchingDetails(id);
+  }
+
+  private void ensureMatchingProfile(Long id, boolean enabled) {
+    if (db.count("select count(*) from matching_profile where user_id=?", id) == 0)
+      db.jdbc.update(
+          "insert into matching_profile(user_id,matching_enabled,auto_match_count,s_grade_guaranteed_match_count,no_response_count,created_at,updated_at)"
+              + " values (?,?,0,0,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+          id, enabled);
   }
 
   @Transactional

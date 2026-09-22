@@ -96,7 +96,9 @@ public class ProfileIntroPhotoService {
     }
 
     if (!newPhotos.isEmpty() || hasNewPhoto(legacyPhoto)) {
-      matchingProfile.pauseMatching();
+      // Keep the default preference on for the first submission. Photo approval
+      // still gates matching; replacing existing photos keeps the existing pause policy.
+      if (!existingPhotos.isEmpty()) matchingProfile.pauseMatching();
       workflowDb.update(
           "update user_account set approval_status='PENDING',rejection_reason=null where id=? and"
               + " approval_status='REJECTED'",

@@ -57,4 +57,18 @@ public class AccountSettingsController {
       @Size(max = 3) List<@NotBlank @Size(max = 30) String> keywords,
       boolean alimtalkEnabled,
       boolean messageNotifications) {}
+
+  @GetMapping("/me/profile/matching-details")
+  ApiResponse<?> matchingDetails(HttpServletRequest req) {
+    return ApiResponse.ok(settings.matchingDetails(current.require(req)));
+  }
+
+  @PatchMapping("/me/profile/matching-details")
+  ApiResponse<?> updateMatchingDetails(HttpServletRequest req, @Valid @RequestBody MatchingDetails input) {
+    return ApiResponse.ok(settings.updateMatchingDetails(current.require(req), input.datingStyle(), input.keywords()));
+  }
+
+  record MatchingDetails(
+      @Size(max = 1000) String datingStyle,
+      @Size(max = 3) List<@NotBlank @Size(max = 30) String> keywords) {}
 }
