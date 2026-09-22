@@ -13,6 +13,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class VerificationReviewService {
+  @org.springframework.beans.factory.annotation.Autowired private VerificationBadgeService badges;
+  @org.springframework.beans.factory.annotation.Autowired private UserLocks locks;
   private final DbRows db;
   private final Path privateRoot, publicRoot;
   private final StoredFileCleanup cleanup;
@@ -32,7 +34,7 @@ public class VerificationReviewService {
 
   public List<Map<String, Object>> documents(Long user) {
     return db.list(
-        "select id,user_id,document_type,original_filename,review_status,rejection_reason,created_at from"
+        "select id,user_id,document_type,original_filename,review_status,rejection_reason,created_at,subject_value,invalidated_at from"
             + " user_verification_document where user_id=? order by id desc",
         user);
   }
@@ -40,8 +42,9 @@ public class VerificationReviewService {
   public List<Map<String, Object>> queue() {
     return db.list(
         "select"
-            + " d.id,d.user_id,d.document_type,d.review_status,d.rejection_reason,d.created_at,u.name"
-            + " from user_verification_document d join user_account u on u.id=d.user_id where"
+            + " d.id,d.user_id,d.document_type,d.review_status,d.rejection_reason,d.created_at,u.name,d.subject_value,d.invalidated_at,"
+            + " case when d.document_type='EMPLOYMENT' then p.job when d.document_type='EDUCATION' then p.education end as current_subject_value"
+            + " from user_verification_document d join user_account u on u.id=d.user_id left join user_profile p on p.user_id=d.user_id where"
             + " u.status<>'DELETED' order by d.created_at desc limit 200");
   }
 
@@ -60,6 +63,7 @@ public class VerificationReviewService {
 
   @Transactional
   public void upload(Long user, String type, MultipartFile file) {
+    locks.lock(user);
     if (!Set.of("IDENTITY", "EMPLOYMENT", "EDUCATION", "OTHER").contains(type))
       throw bad("서류 종류를 선택해주세요.");
     if (file.isEmpty() || file.getSize() > 5 * 1024 * 1024)
@@ -76,12 +80,12 @@ public class VerificationReviewService {
       cleanup.removeOnRollback(target);
       db.jdbc.update(
           "insert into"
-              + " user_verification_document(user_id,document_type,file_url,original_filename,review_status,created_at,updated_at)"
-              + " values (?,?,?,?,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+              + " user_verification_document(user_id,document_type,file_url,original_filename,subject_value,review_status,created_at,updated_at)"
+              + " values (?,?,?,?,?,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
           user,
           type,
           target.getFileName().toString(),
-          safeFilename(file.getOriginalFilename()));
+          safeFilename(file.getOriginalFilename()), badges.subject(user, type));
       db.jdbc.update(
           "update user_account set approval_status='PENDING',rejection_reason=null where id=? and"
               + " approval_status='REJECTED'",
@@ -136,6 +140,19 @@ public class VerificationReviewService {
       throw bad("반려 사유를 입력해주세요.");
     String table = photo ? "profile_photo" : "user_verification_document";
     var item = db.one("select user_id from " + table + " where id=?", id);
+    Long userId=((Number)item.get("userId")).longValue();
+    locks.lock(userId);
+    if (!photo && status.equals("APPROVED")) {
+      var document=db.one("select document_type,subject_value,invalidated_at from user_verification_document where id=?", id);
+      String type=document.get("documentType").toString();
+      if (Set.of("EMPLOYMENT", "EDUCATION").contains(type)) {
+        String current=badges.subject(userId, type);
+        if (current==null || current.isBlank()) throw bad("직업·학력 정보를 먼저 입력해주세요.");
+        if (document.get("invalidatedAt")!=null || (document.get("subjectValue")!=null && !current.equals(document.get("subjectValue"))))
+          throw bad("제출 이후 프로필이 변경됐어요. 새 서류를 제출해주세요.");
+        db.jdbc.update("update user_verification_document set subject_value=? where id=?", current, id);
+      }
+    }
     db.jdbc.update(
         "update "
             + table

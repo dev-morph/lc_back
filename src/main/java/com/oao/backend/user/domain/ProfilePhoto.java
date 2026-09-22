@@ -56,6 +56,8 @@ public class ProfilePhoto extends BaseTimeEntity {
 		return displayOrder;
 	}
 
+	public void updateDisplayOrder(Integer displayOrder) { this.displayOrder = displayOrder; }
+
 	public UserVerificationDocument.ReviewStatus getReviewStatus() {
 		return reviewStatus;
 	}

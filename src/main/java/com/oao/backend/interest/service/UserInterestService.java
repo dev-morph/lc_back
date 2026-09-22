@@ -37,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class UserInterestService {
+  @org.springframework.beans.factory.annotation.Autowired private com.oao.backend.user.service.VerificationBadgeService badges;
   @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
   private final com.oao.backend.matching.service.MatchingPolicyService matchingPolicy;
   private final com.oao.backend.common.UserLocks userLocks;
@@ -98,7 +99,7 @@ public class UserInterestService {
 
   @Transactional(readOnly = true)
   public List<InterestProfileView> received(Long userId) {
-    return interestRepository
+    var items = interestRepository
         .findByReceiverUserIdAndStatusAndInterestTypeOrderByCreatedAtDescIdDesc(
             userId, InterestStatus.ACTIVE, InterestType.EXPRESS)
         .stream()
@@ -107,13 +108,14 @@ public class UserInterestService {
             interest ->
                 matchingPolicy.pairAllowed(
                     interest.getSenderUserId(), interest.getReceiverUserId()))
-        .map(interest -> toProfileView(interest, interest.getSenderUserId()))
         .toList();
+    var verified=badges.forUsers(items.stream().map(UserInterest::getSenderUserId).toList());
+    return items.stream().map(i -> toProfileView(i,i.getSenderUserId(),verified.getOrDefault(i.getSenderUserId(),com.oao.backend.user.service.VerificationBadgeService.Badges.NONE))).toList();
   }
 
   @Transactional(readOnly = true)
   public List<InterestProfileView> sent(Long userId) {
-    return interestRepository
+    var items = interestRepository
         .findBySenderUserIdAndStatusOrderByCreatedAtDescIdDesc(userId, InterestStatus.ACTIVE)
         .stream()
         .filter(this::isVisiblePendingInterest)
@@ -121,8 +123,9 @@ public class UserInterestService {
             interest ->
                 matchingPolicy.pairAllowed(
                     interest.getSenderUserId(), interest.getReceiverUserId()))
-        .map(interest -> toProfileView(interest, interest.getReceiverUserId()))
         .toList();
+    var verified=badges.forUsers(items.stream().map(UserInterest::getReceiverUserId).toList());
+    return items.stream().map(i -> toProfileView(i,i.getReceiverUserId(),verified.getOrDefault(i.getReceiverUserId(),com.oao.backend.user.service.VerificationBadgeService.Badges.NONE))).toList();
   }
 
   @Transactional
@@ -284,6 +287,7 @@ public class UserInterestService {
             .findByUserId(profileUserId)
             .map(matchingProfile -> matchingProfile.getJobIntro())
             .orElse(null);
+    var verified=badges.forUser(profileUserId);
     return new InterestProfileDetailView(
         contextInterest.getMatchId(),
         contextInterest.isChatRoomCreated() ? "ACCEPTED" : consent.active(contextInterest) ? "INTEREST" : "CLOSED",
@@ -321,7 +325,7 @@ public class UserInterestService {
         incomingInterest != null && consent.active(incomingInterest)
             ? incomingInterest.getExpressMessage()
             : null,
-        chatAvailability.available(contextInterest.getMatchId(), userId, profileUserId));
+        chatAvailability.available(contextInterest.getMatchId(), userId, profileUserId), verified.employmentVerified(), verified.educationVerified());
   }
 
   private boolean isVisiblePendingInterest(UserInterest interest) {
@@ -405,6 +409,10 @@ public class UserInterestService {
   }
 
   private InterestProfileView toProfileView(UserInterest interest, Long profileUserId) {
+    return toProfileView(interest, profileUserId, badges.forUser(profileUserId));
+  }
+
+  private InterestProfileView toProfileView(UserInterest interest, Long profileUserId, com.oao.backend.user.service.VerificationBadgeService.Badges verified) {
     UserAccount user =
         userAccountRepository
             .findById(profileUserId)
@@ -431,7 +439,7 @@ public class UserInterestService {
         interest.isNotificationTarget(),
         interest.getExpressDecision().name(),
         interest.isChatRoomCreated(), interest.getMatchId(),
-        interest.getMatchId() == null ? null : chatRoomRepository.findByMatchId(interest.getMatchId()).map(ChatRoom::getId).orElse(null));
+        interest.getMatchId() == null ? null : chatRoomRepository.findByMatchId(interest.getMatchId()).map(ChatRoom::getId).orElse(null), profile==null?null:profile.getEducation(), verified.employmentVerified(), verified.educationVerified());
   }
 
   private Integer age(LocalDate birthDate) {
@@ -458,7 +466,7 @@ public class UserInterestService {
       String expressDecision,
       boolean chatRoomCreated,
       Long matchId,
-      Long chatRoomId) {}
+      Long chatRoomId, String education, boolean employmentVerified, boolean educationVerified) {}
 
   public record InterestActionResult(
       InterestProfileView profile, int spentHearts, int remainingHearts, boolean chatRoomCreated,
@@ -503,7 +511,7 @@ public class UserInterestService {
       boolean chatRoomCreated,
       boolean receivedInterest,
       String receivedExpressMessage,
-      boolean chatAvailable) {}
+      boolean chatAvailable, boolean employmentVerified, boolean educationVerified) {}
 
   public record InterestHobbyView(String name, boolean common) {}
 }

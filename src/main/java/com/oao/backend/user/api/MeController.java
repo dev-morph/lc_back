@@ -38,6 +38,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/me")
 public class MeController {
+  @org.springframework.beans.factory.annotation.Autowired private com.oao.backend.user.service.VerificationBadgeService badges;
 
   private final UserAccountRepository userAccountRepository;
   private final UserVerificationDocumentRepository documentRepository;
@@ -72,7 +73,7 @@ public class MeController {
       @AuthenticationPrincipal KakaoPrincipal principal,
       @RequestHeader(value = "X-User-Id", required = false) Long headerUserId) {
     Long userId = resolveUserId(principal, headerUserId);
-    return ApiResponse.ok(ProfileResponse.from(userProfileService.findProfile(userId)));
+    return ApiResponse.ok(ProfileResponse.from(userProfileService.findProfile(userId), badges.forUser(userId)));
   }
 
   @PutMapping("/profile")
@@ -115,6 +116,16 @@ public class MeController {
     }
     throw new BusinessException(HttpStatus.UNAUTHORIZED, "Login is required.");
   }
+
+  @PutMapping("/profile/photos/order")
+  ApiResponse<IntroPhotoResponse> reorderPhotos(
+      @AuthenticationPrincipal KakaoPrincipal principal,
+      @RequestHeader(value="X-User-Id", required=false) Long headerUserId,
+      @Valid @RequestBody PhotoOrderRequest request) {
+    return ApiResponse.ok(IntroPhotoResponse.from(profileIntroPhotoService.reorderPhotos(resolveUserId(principal, headerUserId), request.photoIds())));
+  }
+
+  record PhotoOrderRequest(@NotNull @Size(min=2,max=6) List<@NotNull Long> photoIds) {}
 
   record SubmitVerificationDocumentRequest(
       @NotBlank String documentType, @NotBlank String fileUrl) {}
@@ -186,9 +197,9 @@ public class MeController {
       String activityRegion,
       List<String> hobbies,
       List<ActivityRegionResponse> activityRegions,
-      boolean profileCompleted) {
+      boolean profileCompleted, boolean employmentVerified, boolean educationVerified) {
 
-    static ProfileResponse from(ProfileView profile) {
+    static ProfileResponse from(ProfileView profile, com.oao.backend.user.service.VerificationBadgeService.Badges badges) {
       return new ProfileResponse(
           profile.name(),
           profile.birthDate(),
@@ -204,7 +215,7 @@ public class MeController {
           profile.activityRegion(),
           profile.hobbies(),
           profile.activityRegions().stream().map(ActivityRegionResponse::from).toList(),
-          profile.profileCompleted());
+          profile.profileCompleted(), badges.employmentVerified(), badges.educationVerified());
     }
   }
 
@@ -224,13 +235,13 @@ public class MeController {
           introPhoto.intro(),
           introPhoto.photoUrl(),
           introPhoto.photos().stream()
-              .map(photo -> new IntroPhotoItemResponse(photo.photoUrl(), photo.displayOrder()))
+              .map(photo -> new IntroPhotoItemResponse(photo.id(), photo.photoUrl(), photo.displayOrder(), photo.reviewStatus()))
               .toList(),
           introPhoto.completed());
     }
   }
 
-  record IntroPhotoItemResponse(String photoUrl, Integer displayOrder) {}
+  record IntroPhotoItemResponse(Long id, String photoUrl, Integer displayOrder, String reviewStatus) {}
 
   record IntroPhotoSaveResponse(boolean completed) {}
 

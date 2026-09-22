@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class ProfileIntroPhotoService {
+  @org.springframework.beans.factory.annotation.Autowired private com.oao.backend.common.UserLocks locks;
   @org.springframework.beans.factory.annotation.Autowired
   private com.oao.backend.common.StoredFileCleanup cleanup;
 
@@ -68,6 +69,7 @@ public class ProfileIntroPhotoService {
   @Transactional
   public IntroPhotoView saveIntroPhoto(
       Long userId, String intro, List<MultipartFile> photos, MultipartFile legacyPhoto) {
+    locks.lock(userId);
     String normalizedIntro = normalizeIntro(intro);
     List<ProfilePhoto> existingPhotos =
         profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
@@ -113,6 +115,20 @@ public class ProfileIntroPhotoService {
 
   private boolean hasNewPhoto(MultipartFile photo) {
     return photo != null && !photo.isEmpty();
+  }
+
+  @Transactional
+  public IntroPhotoView reorderPhotos(Long userId, List<Long> photoIds) {
+    locks.lock(userId);
+    var photos=profilePhotoRepository.findByUserIdOrderByDisplayOrderAscIdAsc(userId);
+    var existing=photos.stream().map(ProfilePhoto::getId).collect(java.util.stream.Collectors.toSet());
+    if (photoIds==null || photoIds.size()<MIN_PHOTO_COUNT || photoIds.size()>MAX_PHOTO_COUNT
+        || photoIds.stream().anyMatch(java.util.Objects::isNull) || photoIds.size()!=new java.util.HashSet<>(photoIds).size()
+        || !existing.equals(new java.util.HashSet<>(photoIds)))
+      throw new BusinessException(HttpStatus.CONFLICT, "사진이 변경됐어요. 새로 불러온 후 다시 정렬해주세요.");
+    for (var photo: photos) photo.updateDisplayOrder(photoIds.indexOf(photo.getId())+1);
+    profilePhotoRepository.flush();
+    return findIntroPhoto(userId);
   }
 
   private List<MultipartFile> normalizePhotos(List<MultipartFile> photos) {
@@ -279,7 +295,7 @@ public class ProfileIntroPhotoService {
 
   private List<ProfilePhotoView> toPhotoViews(List<ProfilePhoto> photos) {
     return photos.stream()
-        .map(photo -> new ProfilePhotoView(photo.getImageUrl(), photo.getDisplayOrder()))
+        .map(photo -> new ProfilePhotoView(photo.getId(), photo.getImageUrl(), photo.getDisplayOrder(), photo.getReviewStatus().name()))
         .toList();
   }
 
@@ -321,5 +337,5 @@ public class ProfileIntroPhotoService {
   public record IntroPhotoView(
       String intro, String photoUrl, List<ProfilePhotoView> photos, boolean completed) {}
 
-  public record ProfilePhotoView(String photoUrl, Integer displayOrder) {}
+  public record ProfilePhotoView(Long id, String photoUrl, Integer displayOrder, String reviewStatus) {}
 }

@@ -33,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MatchReadService {
+  @org.springframework.beans.factory.annotation.Autowired private com.oao.backend.user.service.VerificationBadgeService badges;
   private final com.oao.backend.matching.service.MatchingPolicyService matchingPolicy;
 
   private final MatchProposalRepository matchProposalRepository;
@@ -73,7 +74,7 @@ public class MatchReadService {
 
   @Transactional(readOnly = true)
   public List<MatchView> findPendingMatches(Long userId) {
-    return matchProposalRepository
+    var matches = matchProposalRepository
         .findByStatusAndUserAIdOrStatusAndUserBId(
             MatchStatus.PENDING, userId, MatchStatus.PENDING, userId)
         .stream()
@@ -81,19 +82,21 @@ public class MatchReadService {
             match -> match.getExpiresAt() == null || match.getExpiresAt().isAfter(Instant.now()))
         .filter(match -> matchingPolicy.pairAllowed(match.getUserAId(), match.getUserBId()))
         .sorted(matchComparator())
-        .map(match -> toMatchView(match, userId))
         .toList();
+    var verified=badges.forUsers(matches.stream().map(m -> counterpartUserId(m,userId)).toList());
+    return matches.stream().map(m -> toMatchView(m,userId,verified.getOrDefault(counterpartUserId(m,userId), com.oao.backend.user.service.VerificationBadgeService.Badges.NONE))).toList();
   }
 
   @Transactional(readOnly = true)
   public List<MatchView> findCompletedMatches(Long userId) {
-    return matchProposalRepository
+    var matches = matchProposalRepository
         .findByStatusAndUserAIdOrStatusAndUserBId(
             MatchStatus.ACCEPTED, userId, MatchStatus.ACCEPTED, userId)
         .stream()
         .sorted(completedMatchComparator())
-        .map(match -> toMatchView(match, userId))
         .toList();
+    var verified=badges.forUsers(matches.stream().map(m -> counterpartUserId(m,userId)).toList());
+    return matches.stream().map(m -> toMatchView(m,userId,verified.getOrDefault(counterpartUserId(m,userId), com.oao.backend.user.service.VerificationBadgeService.Badges.NONE))).toList();
   }
 
   @Transactional(readOnly = true)
@@ -106,10 +109,10 @@ public class MatchReadService {
       throw new BusinessException(HttpStatus.NOT_FOUND, "Match not found.");
     }
     matchingPolicy.requirePair(match.getUserAId(), match.getUserBId());
-    return toMatchView(match, userId);
+    return toMatchView(match, userId, badges.forUser(counterpartUserId(match,userId)));
   }
 
-  private MatchView toMatchView(MatchProposal match, Long userId) {
+  private MatchView toMatchView(MatchProposal match, Long userId, com.oao.backend.user.service.VerificationBadgeService.Badges verified) {
     Long counterpartUserId = counterpartUserId(match, userId);
     UserAccount counterpart =
         userAccountRepository
@@ -171,7 +174,7 @@ public class MatchReadService {
         hobbyViews(userId, counterpartUserId),
         hasLiked,
         hasExpressed,
-        chatAvailability.available(match.getId(), userId, counterpartUserId));
+        chatAvailability.available(match.getId(), userId, counterpartUserId), verified.employmentVerified(), verified.educationVerified());
   }
 
   private boolean hasActiveInterest(
@@ -285,7 +288,7 @@ public class MatchReadService {
       List<MatchHobbyView> hobbies,
       boolean hasLiked,
       boolean hasExpressed,
-      boolean chatAvailable) {}
+      boolean chatAvailable, boolean employmentVerified, boolean educationVerified) {}
 
   public record MatchPhotoView(String photoUrl, Integer displayOrder) {}
 

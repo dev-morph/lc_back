@@ -24,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class UserProfileService {
+    @org.springframework.beans.factory.annotation.Autowired private VerificationBadgeService badges;
+    @org.springframework.beans.factory.annotation.Autowired private com.oao.backend.common.UserLocks locks;
 
 	private static final Set<String> SMOKING_STATUSES = Set.of("NON_SMOKER", "SMOKER", "OCCASIONAL");
 	private static final Set<String> DRINKING_STATUSES = Set.of("NONE", "SOCIAL", "OFTEN");
@@ -91,12 +93,14 @@ public class UserProfileService {
 
 	@Transactional
 	public ProfileView updateProfile(Long userId, ProfileUpdateCommand command) {
+		locks.lock(userId);
 		validate(command);
 
 		UserAccount user = findUser(userId);
 		String name = trim(command.name());
 		String job = trim(command.job());
 		String education = trim(command.education());
+		badges.invalidateChanged(userId, job, education);
 		List<ActivityRegionValue> activityRegions = command.activityRegions() == null
 			? findActivityRegions(userId)
 			: normalizedActivityRegions(command.activityRegions());
