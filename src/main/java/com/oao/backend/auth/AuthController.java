@@ -36,7 +36,13 @@ public class AuthController {
   }
 
   @GetMapping("/oauth/kakao/authorize")
-  void kakaoAuthorize(HttpServletResponse response) throws IOException {
+  void kakaoAuthorize(jakarta.servlet.http.HttpServletRequest request, HttpServletResponse response) throws IOException {
+    var session = request.getSession(false);
+    if (session != null) {
+      session.removeAttribute("KAKAO_LINK_USER");
+      session.removeAttribute("KAKAO_LINK_TIME");
+      session.removeAttribute("KAKAO_LINK_COMPLETED");
+    }
     response.sendRedirect("/oauth2/authorization/kakao");
   }
 

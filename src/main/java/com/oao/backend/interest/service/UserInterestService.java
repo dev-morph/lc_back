@@ -42,6 +42,7 @@ public class UserInterestService {
   private final com.oao.backend.common.UserLocks userLocks;
   private final com.oao.backend.matching.service.MatchConnectionService connections;
   private final InterestConsentPolicy consent;
+  private final com.oao.backend.chat.service.ChatAvailabilityService chatAvailability;
 
   private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
   private static final int PRIVATE_ACCEPT_HEART_COST = 4;
@@ -65,6 +66,7 @@ public class UserInterestService {
       com.oao.backend.common.UserLocks userLocks,
       com.oao.backend.matching.service.MatchConnectionService connections,
       InterestConsentPolicy consent,
+      com.oao.backend.chat.service.ChatAvailabilityService chatAvailability,
       UserInterestRepository interestRepository,
       UserAccountRepository userAccountRepository,
       UserProfileRepository userProfileRepository,
@@ -80,6 +82,7 @@ public class UserInterestService {
     this.userLocks = userLocks;
     this.connections = connections;
     this.consent = consent;
+    this.chatAvailability = chatAvailability;
     this.interestRepository = interestRepository;
     this.userAccountRepository = userAccountRepository;
     this.userProfileRepository = userProfileRepository;
@@ -252,13 +255,15 @@ public class UserInterestService {
         interestRepository
             .findBySenderUserIdAndReceiverUserIdAndStatus(
                 profileUserId, userId, InterestStatus.ACTIVE)
+            .filter(interest -> interest.getInterestType() == InterestType.EXPRESS)
             .orElse(null);
     UserInterest outgoingInterest =
         interestRepository
             .findBySenderUserIdAndReceiverUserIdAndStatus(
                 userId, profileUserId, InterestStatus.ACTIVE)
             .orElse(null);
-    UserInterest contextInterest = incomingInterest == null ? outgoingInterest : incomingInterest;
+    UserInterest contextInterest = incomingInterest != null && consent.active(incomingInterest)
+        ? incomingInterest : outgoingInterest != null ? outgoingInterest : incomingInterest;
     if (contextInterest == null) {
       throw new BusinessException(HttpStatus.NOT_FOUND, "Interest profile not found.");
     }
@@ -281,7 +286,7 @@ public class UserInterestService {
             .orElse(null);
     return new InterestProfileDetailView(
         contextInterest.getMatchId(),
-        contextInterest.isChatRoomCreated() ? "ACCEPTED" : "INTEREST",
+        contextInterest.isChatRoomCreated() ? "ACCEPTED" : consent.active(contextInterest) ? "INTEREST" : "CLOSED",
         "NONE",
         "NONE",
         null,
@@ -304,10 +309,8 @@ public class UserInterestService {
         intro,
         photo == null ? null : photo.getImageUrl(),
         hobbyViews(userId, profileUserId),
-        interestRepository.existsBySenderUserIdAndReceiverUserIdAndStatusAndInterestType(
-            userId, profileUserId, InterestStatus.ACTIVE, InterestType.LIKE),
-        interestRepository.existsBySenderUserIdAndReceiverUserIdAndStatusAndInterestType(
-            userId, profileUserId, InterestStatus.ACTIVE, InterestType.EXPRESS),
+        outgoingInterest != null && consent.active(outgoingInterest) && outgoingInterest.getInterestType() == InterestType.LIKE,
+        outgoingInterest != null && consent.active(outgoingInterest) && outgoingInterest.getInterestType() == InterestType.EXPRESS,
         contextInterest.getId(),
         contextInterest.getInterestType().name(),
         contextInterest.getHeartCost(),
@@ -315,9 +318,10 @@ public class UserInterestService {
         contextInterest.getExpressDecision().name(),
         contextInterest.isChatRoomCreated(),
         incomingInterest != null && consent.active(incomingInterest),
-        incomingInterest != null && incomingInterest.getInterestType() == InterestType.EXPRESS
+        incomingInterest != null && consent.active(incomingInterest)
             ? incomingInterest.getExpressMessage()
-            : null);
+            : null,
+        chatAvailability.available(contextInterest.getMatchId(), userId, profileUserId));
   }
 
   private boolean isVisiblePendingInterest(UserInterest interest) {
@@ -498,7 +502,8 @@ public class UserInterestService {
       String expressDecision,
       boolean chatRoomCreated,
       boolean receivedInterest,
-      String receivedExpressMessage) {}
+      String receivedExpressMessage,
+      boolean chatAvailable) {}
 
   public record InterestHobbyView(String name, boolean common) {}
 }

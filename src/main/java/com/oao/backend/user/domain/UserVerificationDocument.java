@@ -21,6 +21,7 @@ public class UserVerificationDocument extends BaseTimeEntity {
 	private Long userId;
 	private String documentType;
 	private String fileUrl;
+	private String originalFilename;
 
 	@Enumerated(EnumType.STRING)
 	private ReviewStatus reviewStatus = ReviewStatus.PENDING;

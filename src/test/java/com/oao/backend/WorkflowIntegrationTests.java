@@ -641,16 +641,28 @@ class WorkflowIntegrationTests {
   }
 
   @Test
-  void onboardingRequiresActiveEmploymentAndEducationSubmissions() {
+  void optionalDocumentsStillRequireIntroPhotos() {
+    eligible(user);
+    db.update("delete from profile_photo where user_id=?", user);
+    assertThatThrownBy(() -> onboarding.complete(user))
+        .isInstanceOf(BusinessException.class).hasMessageContaining("소개와 프로필 사진");
+  }
+
+  @Test
+  void onboardingAllowsOptionalDocumentsAndKeepsActualSubmissionStatus() {
     eligible(user);
 
     var initial = onboarding.status(user);
     assertThat(initial.profileCompleted()).isTrue();
     assertThat(initial.introPhotoCompleted()).isTrue();
     assertThat(initial.onboardingCompleted()).isFalse();
-    assertThatThrownBy(() -> onboarding.complete(user))
-        .isInstanceOf(BusinessException.class)
-        .hasMessageContaining("직업 확인 서류");
+    db.update("update user_account set approval_status='PENDING' where id=?", user);
+    var withoutDocuments = onboarding.complete(user);
+    assertThat(withoutDocuments.onboardingCompleted()).isTrue();
+    assertThat(withoutDocuments.employmentDocumentSubmitted()).isFalse();
+    assertThat(withoutDocuments.educationDocumentSubmitted()).isFalse();
+    assertThat(db.queryForObject("select approval_status from user_account where id=?", String.class, user)).isEqualTo("PENDING");
+    assertThat(policy.eligible(user)).isFalse();
 
     var proof =
         new MockMultipartFile(
@@ -662,6 +674,8 @@ class WorkflowIntegrationTests {
             user);
     reviews.review(rejectedEmployment, false, "REJECTED", "직업 서류를 다시 제출해주세요.", 1L);
     assertThat(onboarding.status(user).employmentDocumentSubmitted()).isFalse();
+    db.update("update user_account set onboarding_completed_at=null where id=?", user);
+    assertThat(onboarding.complete(user).onboardingCompleted()).isTrue();
 
     reviews.upload(user, "EMPLOYMENT", proof);
     long approvedEmployment =
@@ -678,12 +692,15 @@ class WorkflowIntegrationTests {
     assertThat(onboarding.status(user).employmentDocumentSubmitted()).isFalse();
 
     reviews.upload(user, "EMPLOYMENT", proof);
-    assertThatThrownBy(() -> onboarding.complete(user))
-        .isInstanceOf(BusinessException.class)
-        .hasMessageContaining("학력 확인 서류");
+    db.update("update user_account set onboarding_completed_at=null where id=?", user);
+    var oneDocument = onboarding.complete(user);
+    assertThat(oneDocument.onboardingCompleted()).isTrue();
+    assertThat(oneDocument.employmentDocumentSubmitted()).isTrue();
+    assertThat(oneDocument.educationDocumentSubmitted()).isFalse();
     reviews.upload(user, "EDUCATION", proof);
 
     assertThat(onboarding.complete(user).onboardingCompleted()).isTrue();
+    assertThat(onboarding.complete(user).educationDocumentSubmitted()).isTrue();
     assertThat(
             db.queryForObject(
                 "select onboarding_completed_at is not null from user_account where id=?",

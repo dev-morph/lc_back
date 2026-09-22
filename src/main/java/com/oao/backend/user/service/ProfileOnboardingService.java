@@ -62,16 +62,10 @@ public class ProfileOnboardingService {
     if (!current.introPhotoCompleted()) {
       throw incomplete("소개와 프로필 사진을 먼저 등록해주세요.");
     }
-    if (!current.employmentDocumentSubmitted()) {
-      throw incomplete("직업 확인 서류를 제출해주세요.");
-    }
-    if (!current.educationDocumentSubmitted()) {
-      throw incomplete("학력 확인 서류를 제출해주세요.");
-    }
-
     user.completeOnboarding();
     users.save(user);
-    return new OnboardingStatus(true, true, true, true, true);
+    return new OnboardingStatus(true, true, current.employmentDocumentSubmitted(),
+        current.educationDocumentSubmitted(), true);
   }
 
   private UserAccount findUser(Long userId) {

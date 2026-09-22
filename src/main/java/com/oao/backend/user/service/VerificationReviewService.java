@@ -32,8 +32,8 @@ public class VerificationReviewService {
 
   public List<Map<String, Object>> documents(Long user) {
     return db.list(
-        "select id,user_id,document_type,review_status,rejection_reason,created_at from"
-            + " user_verification_document where user_id=? order by created_at desc",
+        "select id,user_id,document_type,original_filename,review_status,rejection_reason,created_at from"
+            + " user_verification_document where user_id=? order by id desc",
         user);
   }
 
@@ -76,11 +76,12 @@ public class VerificationReviewService {
       cleanup.removeOnRollback(target);
       db.jdbc.update(
           "insert into"
-              + " user_verification_document(user_id,document_type,file_url,review_status,created_at,updated_at)"
-              + " values (?,?,?,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+              + " user_verification_document(user_id,document_type,file_url,original_filename,review_status,created_at,updated_at)"
+              + " values (?,?,?,?,'PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
           user,
           type,
-          target.getFileName().toString());
+          target.getFileName().toString(),
+          safeFilename(file.getOriginalFilename()));
       db.jdbc.update(
           "update user_account set approval_status='PENDING',rejection_reason=null where id=? and"
               + " approval_status='REJECTED'",
@@ -99,6 +100,14 @@ public class VerificationReviewService {
         && new String(b, 0, 5, java.nio.charset.StandardCharsets.US_ASCII).equals("%PDF-"))
       return ".pdf";
     throw bad("JPG, PNG 또는 PDF 형식만 지원합니다.");
+  }
+
+  private String safeFilename(String filename) {
+    if (filename == null) return null;
+    String leaf = filename.replace('\\', '/');
+    leaf = leaf.substring(leaf.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}\\p{Cf}]", "").strip();
+    if (leaf.isEmpty()) return null;
+    return leaf.substring(0, leaf.offsetByCodePoints(0, Math.min(leaf.codePointCount(0, leaf.length()), 200)));
   }
 
   public Resource file(Long id, Long user, boolean admin) {

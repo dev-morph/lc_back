@@ -28,6 +28,58 @@ class AuditFixIntegrationTests {
   @Autowired JdbcTemplate db;
   @Autowired UserAccountRepository users;
   @Autowired PlatformTransactionManager transactions;
+  @Autowired com.oao.backend.chat.service.ChatAvailabilityService chatAvailability;
+  @Autowired com.oao.backend.matching.service.MatchReadService matchReads;
+  @Autowired com.oao.backend.user.service.VerificationReviewService reviews;
+  @Autowired com.oao.backend.user.service.ProfileOnboardingService onboarding;
+
+  @Test void storedDocumentNamesArePrivateSanitizedAndSurviveFailedUploads() {
+    long a = member("FEMALE"), b = member("MALE");
+    for (String[] fixture : new String[][] {{"C:\\fakepath\\재직증명.pdf", "%PDF-1.4 fixture"}, {"../../졸업.png", "PNG"}, {"사진.jpg", "JPG"}}) {
+      byte[] bytes = fixture[1].equals("PNG") ? new byte[] {(byte)137,80,78,71,13,10,26,10}
+          : fixture[1].equals("JPG") ? new byte[] {(byte)255,(byte)216,(byte)255,0}
+          : fixture[1].getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      reviews.upload(a, "EMPLOYMENT", new org.springframework.mock.web.MockMultipartFile("file", fixture[0], "application/octet-stream", bytes));
+      var documents = reviews.documents(a);
+      var latest = documents.get(0);
+      assertThat(latest.get("originalFilename").toString()).doesNotContain("/", "\\");
+      long id = ((Number) latest.get("id")).longValue();
+      assertThat(reviews.file(id, a, false).exists()).isTrue();
+      assertThat(reviews.documents(b)).isEmpty();
+      assertThatThrownBy(() -> reviews.file(id, b, false)).isInstanceOf(BusinessException.class);
+      assertThatThrownBy(() -> reviews.upload(a, "EMPLOYMENT", new org.springframework.mock.web.MockMultipartFile("file", "bad.pdf", "application/pdf", "bad".getBytes())))
+          .isInstanceOf(BusinessException.class);
+      assertThat(reviews.documents(a).get(0).get("id")).isEqualTo(latest.get("id"));
+    }
+    reviews.upload(a, "EDUCATION", new org.springframework.mock.web.MockMultipartFile("file", "가".repeat(300) + ".pdf", "application/pdf", "%PDF-1.4 fixture".getBytes()));
+    assertThat(reviews.documents(a).get(0).get("originalFilename").toString().length()).isEqualTo(200);
+    db.update("update user_verification_document set original_filename=null where user_id=?", a);
+    assertThat(reviews.documents(a).get(0).get("originalFilename")).isNull();
+  }
+
+  @Test void optionalDocumentsDoNotRemoveProfileAndPhotoRequirements() {
+    var user = users.saveAndFlush(UserAccount.createPending());
+    assertThatThrownBy(() -> onboarding.complete(user.getId())).isInstanceOf(BusinessException.class).hasMessageContaining("기본 프로필");
+  }
+
+  @Test void matchingReadContractTracksWaitingConnectionAndLeftConversation() {
+    long a = member("FEMALE"), b = member("MALE");
+    long match = proposal(a, b);
+    interests.send(a, b, com.oao.backend.interest.domain.UserInterest.InterestType.LIKE, null);
+    assertThat(matchReads.findMatch(match, a).hasLiked()).isTrue();
+    assertThat(matchReads.findMatch(match, b).hasLiked()).isFalse();
+    assertThatThrownBy(() -> interests.profileDetail(b, a)).isInstanceOf(BusinessException.class);
+    var connected = interests.send(b, a, com.oao.backend.interest.domain.UserInterest.InterestType.EXPRESS, null);
+    assertThat(matchReads.findMatch(match, a).chatAvailable()).isTrue();
+    assertThat(interests.profileDetail(a, b).chatAvailable()).isTrue();
+    assertThat(chatAvailability.available(match, a, b)).isTrue();
+    db.update("insert into chat_room_member_state(chat_room_id,user_id,left_at,created_at,updated_at) values (?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)", connected.chatRoomId(), a);
+    assertThat(matchReads.findMatch(match, a).chatAvailable()).isFalse();
+    assertThat(interests.profileDetail(a, b).chatAvailable()).isFalse();
+    assertThat(matchReads.findMatch(match, b).chatAvailable()).isTrue();
+    db.update("update chat_room set status='CLOSED' where id=?", connected.chatRoomId());
+    assertThat(matchReads.findMatch(match, b).chatAvailable()).isFalse();
+  }
   @Autowired com.oao.backend.interest.service.UserInterestService interests;
   @Autowired com.oao.backend.matching.service.MatchingPolicyService policy;
   @Autowired com.oao.backend.matching.service.MatchDecisionService decisions;

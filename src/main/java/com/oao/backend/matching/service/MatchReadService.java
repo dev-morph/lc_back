@@ -44,6 +44,7 @@ public class MatchReadService {
   private final HobbyRepository hobbyRepository;
   private final UserInterestRepository userInterestRepository;
   private final com.oao.backend.interest.service.InterestConsentPolicy consent;
+  private final com.oao.backend.chat.service.ChatAvailabilityService chatAvailability;
 
   public MatchReadService(
       com.oao.backend.matching.service.MatchingPolicyService matchingPolicy,
@@ -55,7 +56,8 @@ public class MatchReadService {
       UserHobbyRepository userHobbyRepository,
       HobbyRepository hobbyRepository,
       UserInterestRepository userInterestRepository,
-      com.oao.backend.interest.service.InterestConsentPolicy consent) {
+      com.oao.backend.interest.service.InterestConsentPolicy consent,
+      com.oao.backend.chat.service.ChatAvailabilityService chatAvailability) {
     this.matchingPolicy = matchingPolicy;
     this.matchProposalRepository = matchProposalRepository;
     this.userAccountRepository = userAccountRepository;
@@ -66,6 +68,7 @@ public class MatchReadService {
     this.hobbyRepository = hobbyRepository;
     this.userInterestRepository = userInterestRepository;
     this.consent = consent;
+    this.chatAvailability = chatAvailability;
   }
 
   @Transactional(readOnly = true)
@@ -167,7 +170,8 @@ public class MatchReadService {
         viewerPhotoCount,
         hobbyViews(userId, counterpartUserId),
         hasLiked,
-        hasExpressed);
+        hasExpressed,
+        chatAvailability.available(match.getId(), userId, counterpartUserId));
   }
 
   private boolean hasActiveInterest(
@@ -280,7 +284,8 @@ public class MatchReadService {
       int viewerPhotoCount,
       List<MatchHobbyView> hobbies,
       boolean hasLiked,
-      boolean hasExpressed) {}
+      boolean hasExpressed,
+      boolean chatAvailable) {}
 
   public record MatchPhotoView(String photoUrl, Integer displayOrder) {}
 
