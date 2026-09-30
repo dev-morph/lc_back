@@ -72,6 +72,7 @@ class WorkflowIntegrationTests {
   @Autowired com.oao.backend.meeting.repository.MeetingEventRepository meetingEvents;
   @Autowired KakaoAccountService kakao;
   @Autowired AutoMatchingService autoMatching;
+  @Autowired MatchingScheduleService matchingSchedule;
   @MockitoBean EmailDeliveryService delivery;
   @MockitoBean TossPaymentsClient toss;
   @LocalServerPort int port;
@@ -95,6 +96,29 @@ class WorkflowIntegrationTests {
     when(toss.getByOrder(anyString())).thenReturn(null);
     when(toss.confirm(anyString(), anyString(), anyLong()))
         .thenAnswer(c -> provider(c.getArgument(0), c.getArgument(1), c.getArgument(2), "DONE"));
+  }
+
+  @Test
+  void publicMatchingScheduleShowsConfiguredTimesWithoutAdminDetails() throws Exception {
+    var previous = db.queryForMap("select enabled,run_times,timezone from matching_schedule_config where id=1");
+    try {
+      db.update("update matching_schedule_config set enabled=true,run_times='00:00,18:30',timezone='Asia/Seoul' where id=1");
+      var response = HttpClient.newHttpClient().send(
+          HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/matching/schedule")).GET().build(),
+          HttpResponse.BodyHandlers.ofString());
+      assertThat(response.statusCode()).isEqualTo(200);
+      assertThat(response.body()).contains("\"enabled\":true", "\"timezone\":\"Asia/Seoul\"", "\"dailyTimes\":[\"00:00\",\"18:30\"]");
+      assertThat(response.body()).doesNotContain("updatedByAdminId", "cronExpression");
+      assertThatThrownBy(() -> matchingSchedule.updateSchedule(
+          new MatchingScheduleService.MatchingScheduleUpdateCommand(
+              true, null, List.of(java.time.LocalTime.of(9, 0), java.time.LocalTime.of(9, 0)), null, null, "Asia/Seoul"),
+          0L))
+          .isInstanceOf(BusinessException.class)
+          .hasMessage("Run times must not contain duplicates.");
+    } finally {
+      db.update("update matching_schedule_config set enabled=?,run_times=?,timezone=? where id=1",
+          previous.get("enabled"), previous.get("run_times"), previous.get("timezone"));
+    }
   }
 
   @Test

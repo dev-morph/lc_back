@@ -91,6 +91,9 @@ public class MatchingScheduleService {
 			.distinct()
 			.sorted()
 			.toList();
+		if (distinctRunTimes.size() != runTimes.size()) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST, "Run times must not contain duplicates.");
+		}
 		if (distinctRunTimes.size() > 12) {
 			throw new BusinessException(HttpStatus.BAD_REQUEST, "Run times can be up to 12.");
 		}
